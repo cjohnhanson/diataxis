@@ -37,6 +37,8 @@ pub mod cli;
 #[cfg(feature = "cli")]
 pub mod mangen;
 
+#[cfg(feature = "cli")]
+pub use docs::DocsArgs;
 #[cfg(feature = "store")]
 pub use docs::{DocPage, DocSet, Request};
 #[cfg(feature = "store")]

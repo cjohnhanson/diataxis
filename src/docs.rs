@@ -67,6 +67,11 @@ impl DocSet {
         for (path, raw) in files {
             pages.push(parse_page(path, raw)?);
         }
+        // Diataxis order, then name. A reader meets the lesson, then the
+        // directions, then the machinery, then the discussion, whatever
+        // order the files happen to sit in. A page with no type sorts
+        // last, because nothing states where it belongs.
+        pages.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| a.slug.cmp(&b.slug)));
         Ok(Self { pages })
     }
 
@@ -145,6 +150,11 @@ impl DocSet {
         let all: Vec<&DocPage> = self.pages.iter().collect();
         Self::format_list(&all)
     }
+}
+
+/// Where a page sorts: its type in Diataxis order, or last.
+fn rank(page: &DocPage) -> usize {
+    page.kind.map_or(usize::MAX, |kind| kind as usize)
 }
 
 /// Read one embedded file into a page.
@@ -324,28 +334,42 @@ mod tests {
 
     #[test]
     fn a_slug_comes_from_the_file_name() {
-        assert_eq!(set().pages()[0].slug, "what-is-acme");
+        assert_eq!(set().find("what-is-acme").unwrap().slug, "what-is-acme");
     }
 
     #[test]
     fn the_title_and_type_come_from_the_page() {
         let set = set();
-        assert_eq!(set.pages()[0].title, "What is Acme?");
-        assert_eq!(set.pages()[0].kind, Some(Kind::Explanation));
-        assert_eq!(set.pages()[1].kind, Some(Kind::Tutorial));
+        assert_eq!(set.find("what-is-acme").unwrap().title, "What is Acme?");
+        assert_eq!(
+            set.find("what-is-acme").unwrap().kind,
+            Some(Kind::Explanation)
+        );
+        assert_eq!(
+            set.find("getting-started").unwrap().kind,
+            Some(Kind::Tutorial)
+        );
     }
 
     #[test]
     fn both_fence_forms_are_read() {
         let set = set();
-        assert!(set.pages()[0].content.starts_with("# What is Acme?"));
-        assert_eq!(set.pages()[1].content, "First, install it.");
+        assert!(
+            set.find("what-is-acme")
+                .unwrap()
+                .content
+                .starts_with("# What is Acme?")
+        );
+        assert_eq!(
+            set.find("getting-started").unwrap().content,
+            "First, install it."
+        );
     }
 
     #[test]
     fn a_page_with_no_type_still_lists() {
         let set = DocSet::from_embedded(&[("../docs/composition.md", UNTYPED)]).unwrap();
-        assert_eq!(set.pages()[0].kind, None);
+        assert_eq!(set.find("composition").unwrap().kind, None);
         assert!(set.listing().contains("composition"));
     }
 
@@ -452,5 +476,17 @@ mod tests {
     fn list_is_a_topic_as_well_as_the_default() {
         let args = vec!["list".to_string()];
         assert!(matches!(request_from_args(&args).unwrap(), Request::List));
+    }
+
+    #[test]
+    fn pages_sort_into_diataxis_order_whatever_the_file_order() {
+        let set = DocSet::from_embedded(&[
+            ("../docs/what-is-acme.md", WHAT),
+            ("../docs/getting-started.md", START),
+            ("../docs/composition.md", UNTYPED),
+        ])
+        .unwrap();
+        let order: Vec<&str> = set.pages().iter().map(|p| p.slug.as_str()).collect();
+        assert_eq!(order, ["getting-started", "what-is-acme", "composition"]);
     }
 }
