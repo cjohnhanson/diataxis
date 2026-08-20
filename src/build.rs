@@ -6,8 +6,8 @@
 //!
 //! ```ignore
 //! // build.rs
-//! fn main() {
-//!     diataxis::build::embed_docs().unwrap();
+//! fn main() -> std::io::Result<()> {
+//!     diataxis::build::embed_docs()
 //! }
 //! ```
 //!

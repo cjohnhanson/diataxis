@@ -47,8 +47,8 @@ diataxis = { version = "0.1", default-features = false, features = ["store"] }
 Add `build.rs`:
 
 ```rust
-fn main() {
-    diataxis::build::embed_docs().unwrap();
+fn main() -> std::io::Result<()> {
+    diataxis::build::embed_docs()
 }
 ```
 

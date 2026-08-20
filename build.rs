@@ -7,6 +7,6 @@
 #[path = "src/build.rs"]
 mod embed;
 
-fn main() {
-    embed::embed_docs().expect("embed the documentation set");
+fn main() -> std::io::Result<()> {
+    embed::embed_docs()
 }

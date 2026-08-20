@@ -55,7 +55,7 @@ pub use repo::{CreatePageOptions, EditPageOptions, Repo, SearchResult};
 ///
 /// ```ignore
 /// // build.rs
-/// fn main() { diataxis::build::embed_docs().unwrap(); }
+/// fn main() -> std::io::Result<()> { diataxis::build::embed_docs() }
 ///
 /// // anywhere in the crate
 /// static DOCS: &[(&str, &str)] = diataxis::embedded_docs!();
