@@ -238,8 +238,8 @@ impl DocSet {
 /// and 2 is the code gaff reserves for a guard refusing a tool call. A
 /// tool in that position calls this and keeps its own exit codes.
 ///
-/// Accepts `docs`, `docs <topic>`, `docs search <query>`, and
-/// `docs --all`.
+/// Accepts `docs`, `docs list`, `docs <topic>`, `docs search <query>`,
+/// and `docs --all`.
 pub fn request_from_args(args: &[String]) -> Result<Request<'_>> {
     match args {
         [] => Ok(Request::List),
@@ -249,6 +249,7 @@ pub fn request_from_args(args: &[String]) -> Result<Request<'_>> {
             [] => Err(Error::General("docs search needs a query".to_string())),
             _ => Err(Error::General("docs search takes one query".to_string())),
         },
+        [topic] if topic == "list" => Ok(Request::List),
         [topic] => Ok(Request::Show(topic)),
         _ => Err(Error::General(
             "docs takes a topic, or `search <query>`, or --all".to_string(),
@@ -275,13 +276,19 @@ pub struct DocsArgs {
 #[cfg(feature = "cli")]
 impl DocsArgs {
     /// What this invocation asks for.
-    #[must_use]
-    pub fn request(&self) -> Request<'_> {
+    ///
+    /// # Errors
+    ///
+    /// Fails when `search` carries no query.
+    pub fn request(&self) -> Result<Request<'_>> {
         match (self.all, self.topic.as_deref(), self.query.as_deref()) {
-            (true, _, _) => Request::All,
-            (_, None, _) => Request::List,
-            (_, Some("search"), Some(query)) => Request::Search(query),
-            (_, Some(topic), _) => Request::Show(topic),
+            (true, _, _) => Ok(Request::All),
+            (_, None | Some("list"), _) => Ok(Request::List),
+            (_, Some("search"), Some(query)) => Ok(Request::Search(query)),
+            (_, Some("search"), None) => {
+                Err(Error::General("docs search needs a query".to_string()))
+            }
+            (_, Some(topic), _) => Ok(Request::Show(topic)),
         }
     }
 }
@@ -289,11 +296,13 @@ impl DocsArgs {
 #[cfg(feature = "cli")]
 impl DocSet {
     /// Run the subcommand and print the result.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the request names no page, or when a search matches
+    /// nothing.
     pub fn run(&self, args: &DocsArgs) -> Result<()> {
-        if matches!(args.topic.as_deref(), Some("search")) && args.query.is_none() {
-            return Err(Error::General("docs search needs a query".to_string()));
-        }
-        print!("{}", self.render(args.request())?);
+        print!("{}", self.render(args.request()?)?);
         Ok(())
     }
 }
@@ -437,5 +446,11 @@ mod tests {
             Request::Search("widgets")
         ));
         assert!(request_from_args(&args(&["search"])).is_err());
+    }
+
+    #[test]
+    fn list_is_a_topic_as_well_as_the_default() {
+        let args = vec!["list".to_string()];
+        assert!(matches!(request_from_args(&args).unwrap(), Request::List));
     }
 }
