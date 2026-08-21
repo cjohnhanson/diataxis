@@ -34,13 +34,15 @@ pub struct Finding {
 }
 
 /// Every finding, faults first.
-pub fn check(repo: &Repo) -> Result<Vec<Finding>> {
+pub fn check(root: &camino::Utf8Path) -> Result<Vec<Finding>> {
+    let repo = Repo::open(root)?;
     let mut findings = Vec::new();
     let pages = repo.list()?;
 
-    findings.extend(unreadable_pages(repo)?);
+    findings.extend(unreadable_pages(&repo)?);
     findings.extend(how_to_titles(&pages));
-    findings.extend(broken_links(repo, &pages)?);
+    findings.extend(broken_links(&repo, &pages)?);
+    findings.extend(foreign_links(root)?);
     findings.extend(missing_types(&pages));
 
     findings.sort_by_key(|f| match f.severity {
@@ -48,6 +50,25 @@ pub fn check(repo: &Repo) -> Result<Vec<Finding>> {
         Severity::Advice => 1,
     });
     Ok(findings)
+}
+
+/// A reference into a declared set that names no page there.
+///
+/// `broken_links` reads one set, so it passes over a qualified
+/// reference. The store graph resolves it, and an alias that resolves
+/// to nothing is as broken as a local id that does.
+fn foreign_links(root: &camino::Utf8Path) -> Result<Vec<Finding>> {
+    let workspace = crate::workspace::Workspace::open(root)?;
+    Ok(workspace
+        .missing()
+        .into_iter()
+        .filter(|reference| reference.contains(':'))
+        .map(|reference| Finding {
+            severity: Severity::Fault,
+            subject: "the set".to_string(),
+            message: format!("[[{reference}]] names no page in the set it points at"),
+        })
+        .collect())
 }
 
 /// A markdown file in the pages directory that is not a page.
@@ -208,6 +229,15 @@ fn strip_code_spans(line: &str) -> String {
     out
 }
 
+/// Every `[[reference]]` a page body holds, code excluded.
+///
+/// The store graph needs the same list the link check reads, so both
+/// take it from here and cannot disagree about what a reference is.
+#[must_use]
+pub fn body_refs(body: &str) -> Vec<String> {
+    wiki_targets(&prose_only(body))
+}
+
 /// Every `[[target]]` in a body.
 fn wiki_targets(body: &str) -> Vec<String> {
     let mut targets = Vec::new();
@@ -330,5 +360,11 @@ mod tests {
     fn an_unclosed_backtick_run_keeps_the_rest_of_the_line() {
         assert_eq!(strip_code_spans("a `b c"), "a `b c");
         assert_eq!(strip_code_spans("a ``b`` c"), "a  c");
+    }
+
+    #[test]
+    fn body_refs_reads_prose_and_not_code() {
+        let body = "see [[one]]\n\n```\n[[two]]\n```\n\nand `[[three]]`";
+        assert_eq!(body_refs(body), ["one"]);
     }
 }

@@ -44,10 +44,14 @@ fn intent(command: &Command) -> Option<mdstore::resolve::Intent> {
         | Command::GenMan { .. }
         | Command::GenCompletions { .. }
         | Command::Prime
-        | Command::Docs(_) => return None,
+        | Command::Docs(_)
+        | Command::Store(StoreCommand::Root(_)) => return None,
         // The compass with no page names nothing in the store, but the
         // form is one command and one intent. A read costs nothing.
         Command::Map | Command::Compass(_) | Command::Check | Command::Search(_) => Read,
+        Command::Store(StoreCommand::List) => Read,
+        // Sync mutates the cache.
+        Command::Store(StoreCommand::Sync) => Write,
         Command::Page(cmd) => match **cmd {
             PageCommand::List(_) | PageCommand::Show(_) | PageCommand::Path(_) => Read,
             PageCommand::Create(_) | PageCommand::Edit(_) | PageCommand::Delete(_) => Write,
@@ -92,6 +96,10 @@ pub enum Command {
 
     /// Search the pages
     Search(SearchArgs),
+
+    /// Manage the declared documentation sets
+    #[command(subcommand)]
+    Store(StoreCommand),
 
     /// Show the bundled documentation
     Docs(DocsArgs),
@@ -193,6 +201,27 @@ pub struct CompassArgs {
     pub page: Option<String>,
 }
 
+#[derive(Parser)]
+pub enum StoreCommand {
+    /// List the documentation sets this set reads
+    List,
+    /// Fetch the declared remote sets into the local cache
+    Sync,
+    /// Show or set the root set that reads fall back to
+    Root(StoreRootArgs),
+}
+
+#[derive(clap::Args)]
+pub struct StoreRootArgs {
+    /// The directory of the root set. Without it, print the current
+    /// setting.
+    pub path: Option<Utf8PathBuf>,
+
+    /// Replace an already-set root with a different one.
+    #[arg(long)]
+    pub force: bool,
+}
+
 #[derive(clap::Args)]
 pub struct SearchArgs {
     /// A regular expression, matched without regard to case
@@ -220,6 +249,9 @@ pub fn run(args: Args) -> Result<()> {
             return Err(Error::General(
                 "--home does not apply to this command".to_string(),
             ));
+        }
+        if let Command::Store(StoreCommand::Root(a)) = args.command {
+            return run_store_root(&a, args.user_config.as_deref());
         }
         let cwd = cwd_utf8()?;
         let root = match &args.root {
@@ -320,6 +352,8 @@ pub fn run_command(root: &Utf8Path, command: Command) -> Result<()> {
         Command::Check => run_check(root),
 
         Command::Search(args) => run_search(root, &args.pattern),
+
+        Command::Store(cmd) => run_store(root, cmd),
     }
 }
 
@@ -481,8 +515,7 @@ fn run_compass(root: &Utf8Path, selector: Option<&str>) -> Result<()> {
 }
 
 fn run_check(root: &Utf8Path) -> Result<()> {
-    let repo = Repo::open(root)?;
-    let findings = check(&repo)?;
+    let findings = check(root)?;
     if findings.is_empty() {
         println!("no problems found");
         return Ok(());
@@ -514,6 +547,114 @@ fn run_search(root: &Utf8Path, pattern: &str) -> Result<()> {
             hit.kind.to_string().dimmed(),
             hit.line
         );
+    }
+    Ok(())
+}
+
+/// `store list` and `store sync`. `store root` never reaches here,
+/// because it resolves nothing and runs from any directory.
+fn run_store(root: &Utf8Path, command: StoreCommand) -> Result<()> {
+    match command {
+        StoreCommand::List => {
+            let workspace = crate::workspace::Workspace::open(root)?;
+            for member in workspace.store_members() {
+                let label = if member.alias.is_empty() {
+                    "(this set)".to_string()
+                } else {
+                    member.alias.clone()
+                };
+                let state = match &member.unavailable {
+                    Some(why) => format!("unavailable: {why}"),
+                    None => format!("{} page(s)", member.pages),
+                };
+                let age = match &member.age {
+                    Some(age) => format!("  synced {age}"),
+                    None => String::new(),
+                };
+                println!("{}  {}  {state}{age}", label.bold(), member.source);
+            }
+            Ok(())
+        }
+        StoreCommand::Sync => {
+            let workspace = crate::workspace::Workspace::open_fetching(root)?;
+            let results = workspace.sync_all();
+            if results.is_empty() {
+                println!("no remote sets declared");
+            }
+            let mut failed = false;
+            for (alias, outcome) in results {
+                match outcome {
+                    Ok(()) => println!("{alias}  synced"),
+                    Err(e) => {
+                        failed = true;
+                        eprintln!("{alias}  failed: {e}");
+                    }
+                }
+            }
+            if failed {
+                return Err(Error::General(
+                    "one or more sets failed to sync".to_string(),
+                ));
+            }
+            Ok(())
+        }
+        StoreCommand::Root(_) => unreachable!("store root is rootless and handled in run()"),
+    }
+}
+
+/// `diataxis store root [<path>] [--force]`: show or set the root set
+/// in the user config. Rootless, and acts on its literal argument;
+/// resolution here would be circular.
+fn run_store_root(args: &StoreRootArgs, user_config: Option<&Utf8Path>) -> Result<()> {
+    let config = load_user_config(user_config)?;
+    let Some(path) = &args.path else {
+        match config.root_store {
+            Some(root) => println!(
+                "root_store: {} (~/.config/mdstore/config.yml)",
+                root.display()
+            ),
+            None => println!("root_store: unset"),
+        }
+        return Ok(());
+    };
+    let cwd = cwd_utf8()?;
+    let abs = if path.is_relative() {
+        cwd.join(path)
+    } else {
+        path.clone()
+    };
+    if !abs.join("diataxis.yml").is_file() {
+        return Err(Error::General(format!(
+            "no diataxis.yml in {abs}; run `diataxis init` there first"
+        )));
+    }
+    if let Some(old) = &config.root_store
+        && old != abs.as_std_path()
+        && !args.force
+    {
+        return Err(Error::General(format!(
+            "root_store is {}; pass --force to change it to {abs}",
+            old.display()
+        )));
+    }
+    if config.root_store.as_deref() == Some(abs.as_std_path()) {
+        println!("root_store: {abs} (unchanged)");
+        return Ok(());
+    }
+    let old = config.root_store.clone();
+    let target = user_config
+        .map(|p| p.as_std_path().to_path_buf())
+        .or_else(mdstore::userconfig::config_path)
+        .ok_or_else(|| Error::General("no home directory resolves".to_string()))?;
+    mdstore::userconfig::UserConfig::save_root_to(&target, abs.as_std_path())
+        .map_err(|e| Error::General(e.to_string()))?;
+    match old {
+        Some(old) => println!(
+            "root_store: {} -> {abs} ({})",
+            old.display(),
+            target.display()
+        ),
+        None => println!("root_store: {abs} ({})", target.display()),
     }
     Ok(())
 }

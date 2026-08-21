@@ -31,6 +31,8 @@ pub mod page;
 pub mod repo;
 #[cfg(feature = "store")]
 pub mod selector;
+#[cfg(feature = "store")]
+pub mod workspace;
 
 #[cfg(feature = "cli")]
 pub mod cli;
