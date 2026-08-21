@@ -1,0 +1,7 @@
+assertions:
+  - name: "the page carries its new type"
+    command: "diataxis page show acme-cli-reference | grep -q 'Type: *explanation'"
+  - name: "two pages are explanation now"
+    command: "test $(diataxis page list -T explanation | wc -l) -eq 2"
+  - name: "check reports the empty reference quadrant"
+    command: "diataxis check | grep -q 'no reference pages'"

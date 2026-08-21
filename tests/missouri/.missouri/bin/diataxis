@@ -1,0 +1,10 @@
+#!/bin/sh
+# The binary this repository builds, not whatever `diataxis` the machine
+# has installed. missouri puts this directory on PATH.
+#
+# --user-config names a path that never exists, so the machine's real
+# user config cannot leak a root-store fallback into the suite. The
+# flag's last occurrence wins, so a test that needs a config passes its
+# own after this one.
+exec "$(dirname "$0")/../../../../target/debug/diataxis" \
+  --user-config /nonexistent-missouri-user-config.yml "$@"

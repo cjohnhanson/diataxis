@@ -1,0 +1,12 @@
+test_dir: tests/missouri
+
+setup:
+  - name: "build diataxis"
+    command: "cargo build --quiet"
+
+env:
+  NO_COLOR: "1"
+  # Each path gets its own cache and registry, so a store test never
+  # reads or writes the real ones.
+  MDSTORE_CACHE_DIR: ".mdstore-cache"
+  MDSTORE_REGISTRY: ".mdstore-registry.yml"

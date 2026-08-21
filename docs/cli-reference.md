@@ -130,6 +130,9 @@ type alongside.
 The compass does not classify a page. Classification needs a reader,
 and a tool that guessed would be inventing a fact.
 
+Without a page, the compass resolves no set and runs from any
+directory. An agent recalls the two questions without standing in one.
+
 ## check
 
 ```

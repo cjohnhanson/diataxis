@@ -46,8 +46,10 @@ fn intent(command: &Command) -> Option<mdstore::resolve::Intent> {
         | Command::Prime
         | Command::Docs(_)
         | Command::Store(StoreCommand::Root(_)) => return None,
-        // The compass with no page names nothing in the store, but the
-        // form is one command and one intent. A read costs nothing.
+        // The compass with no page reads nothing, so it answers from
+        // any directory. An agent recalls the two questions without
+        // standing in a documentation set.
+        Command::Compass(args) if args.page.is_none() => return None,
         Command::Map | Command::Compass(_) | Command::Check | Command::Search(_) => Read,
         Command::Store(StoreCommand::List) => Read,
         // Sync mutates the cache.

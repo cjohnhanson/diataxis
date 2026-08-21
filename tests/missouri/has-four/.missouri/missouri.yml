@@ -1,0 +1,18 @@
+transitions:
+  - name: "retype the reference as an explanation"
+    command: "diataxis page edit acme-cli-reference -T explanation >/dev/null"
+    target: "../retyped"
+
+assertions:
+  - name: "a full set has no findings at all"
+    command: "diataxis check"
+    stdout: "no problems found\n"
+  - name: "every quadrant holds a page"
+    command: "diataxis map | grep -qv '(none)'"
+  - name: "the map reads in Diataxis order"
+    command: |
+      diataxis map | grep -E '^(tutorial|how-to|reference|explanation)' |
+        tr -s ' ' | cut -d' ' -f1 | tr '\n' ' ' |
+        grep -q 'tutorial how-to reference explanation'
+  - name: "store list counts four pages"
+    command: "diataxis store list | grep -q '4 page'"

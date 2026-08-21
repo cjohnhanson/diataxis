@@ -1,0 +1,30 @@
+transitions:
+  # init and the first page in one step: git stores no empty directory,
+  # so a state between them could not be written down.
+  - name: "initialize and write a tutorial"
+    command: |
+      diataxis init >/dev/null &&
+      diataxis page create 'Getting started with acme' -T tutorial \
+        -d 'Install acme and run the first job' \
+        -b 'First, install it.' >/dev/null
+    target: "../has-tutorial"
+
+assertions:
+  - name: "a command outside a set names the fix"
+    command: "diataxis page list"
+    should_fail: true
+  - name: "prime runs anywhere"
+    command: "diataxis prime"
+  - name: "docs runs anywhere, with no files present"
+    command: "diataxis docs | grep -q what-is-diataxis"
+  - name: "docs prints one page whole"
+    command: "diataxis docs what-is-diataxis | grep -q 'declares one of four types'"
+  - name: "docs --all marks every page"
+    command: "diataxis docs --all | grep -q '<!-- page: cli-reference (reference) -->'"
+  - name: "docs search finds a match"
+    command: "diataxis docs search compass | grep -q what-is-diataxis"
+  - name: "docs search with no match fails"
+    command: "diataxis docs search zzzznotathing"
+    should_fail: true
+  - name: "the compass prints the two questions"
+    command: "diataxis compass | grep -q 'Does it inform action or cognition'"

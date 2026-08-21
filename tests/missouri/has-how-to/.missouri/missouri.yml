@@ -1,0 +1,14 @@
+transitions:
+  - name: "add a reference and an explanation"
+    command: |
+      diataxis page create 'Acme CLI reference' -T reference \
+        -d 'Every command and option' -b 'acme run [OPTIONS]' >/dev/null &&
+      diataxis page create 'Why acme queues' -T explanation \
+        -d 'The reason a job waits' -b 'A queue absorbs a burst.' >/dev/null
+    target: "../has-four"
+
+assertions:
+  - name: "a how-to whose title states a goal is no fault"
+    command: "diataxis check | grep -qv '^fault'"
+  - name: "the map holds two quadrants"
+    command: "test $(diataxis map | grep -c '(none)') -eq 2"

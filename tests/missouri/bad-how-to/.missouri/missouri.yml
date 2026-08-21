@@ -1,0 +1,8 @@
+assertions:
+  - name: "a how-to title that states no goal is a fault"
+    command: "diataxis check | grep -q 'does not start with .How to.'"
+  - name: "a fault exits non-zero"
+    command: "diataxis check"
+    should_fail: true
+  - name: "the page still lists, because a title is not a parse error"
+    command: "diataxis page list | grep -q rotating-the-signing-key"

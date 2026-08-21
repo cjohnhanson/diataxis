@@ -1,0 +1,56 @@
+transitions:
+  - name: "add a how-to guide"
+    command: |
+      diataxis page create 'How to rotate the signing key' -T how-to \
+        -d 'Replace a key without dropping a session' \
+        -b 'Run the rotate command.' >/dev/null
+    target: "../has-how-to"
+
+  - name: "write a how-to whose title states no goal"
+    command: |
+      diataxis page create 'Rotating the signing key' -T how-to \
+        -d 'Replace a key' -b 'Run the rotate command.' >/dev/null
+    target: "../bad-how-to"
+
+  - name: "add a markdown file that declares no type"
+    command: |
+      printf '<!-- metadata\ntitle: "Notes"\ndescription: "Loose notes"\n-->\n\nNo type here.\n' > docs/notes.md
+    target: "../has-untyped"
+
+assertions:
+  - name: "the page lists with its type"
+    command: "diataxis page list | grep -q 'getting-started-with-acme *tutorial'"
+  - name: "a type filter keeps one type"
+    command: "diataxis page list -T tutorial | grep -q getting-started-with-acme"
+  - name: "a type filter drops the others"
+    command: "diataxis page list -T reference"
+    stdout: ""
+  - name: "an unknown type is refused"
+    command: "diataxis page list -T overview"
+    should_fail: true
+  - name: "guide is how-to, because thirteen pages were written that way"
+    command: "diataxis page list -T guide"
+    stdout: ""
+  - name: "the map shows three empty quadrants"
+    command: "test $(diataxis map | grep -c '(none)') -eq 3"
+  - name: "the map names what each type informs and serves"
+    command: "diataxis map | grep -q 'informs cognition, serves acquisition of skill'"
+  - name: "show finds a page by prefix"
+    command: "diataxis page show getting | grep -q 'Type: *tutorial'"
+  - name: "path prints the file"
+    command: "test \"$(diataxis page path getting)\" = \"$PWD/docs/getting-started-with-acme.md\""
+  - name: "a page that does not exist is an error"
+    command: "diataxis page show nothing"
+    should_fail: true
+  - name: "search finds a line in a body"
+    command: "diataxis search 'install' | grep -q getting-started-with-acme"
+  - name: "the compass names a page's declared type"
+    command: "diataxis compass getting | grep -q 'declares tutorial'"
+  - name: "check reports the three missing types as advice"
+    command: "test $(diataxis check | grep -c '^advice') -eq 3"
+  - name: "advice alone exits zero"
+    command: "diataxis check"
+  - name: "store list shows this set and its page count"
+    command: "diataxis store list | grep -q '(this set).*1 page'"
+  - name: "sync has nothing to fetch"
+    command: "diataxis store sync | grep -q 'no remote sets declared'"
