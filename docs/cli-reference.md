@@ -148,7 +148,7 @@ the files. Advice is a gap worth seeing that is not wrong on its own.
 | A how-to title that does not state a goal | fault |
 | A `[[reference]]` that names no page | fault |
 | A relative `.md` link that names no file | fault |
-| A reference into a declared set that names no page there | fault |
+| A declared set that did not load | fault |
 | A type with no pages | advice |
 
 Exits non-zero when a fault is found. A reference inside a code span or

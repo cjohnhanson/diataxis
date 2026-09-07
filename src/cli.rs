@@ -600,7 +600,13 @@ fn run_store(root: &Utf8Path, command: StoreCommand) -> Result<()> {
             }
             Ok(())
         }
-        StoreCommand::Root(_) => unreachable!("store root is rootless and handled in run()"),
+        // `run` handles this before a root resolves, because the
+        // command sets the root rather than reading one. A consumer
+        // calling `run_command` directly reaches here, and a library
+        // refuses rather than aborting its caller's process.
+        StoreCommand::Root(_) => Err(Error::General(
+            "store root sets the root and takes no root; call run() instead".to_string(),
+        )),
     }
 }
 
@@ -610,12 +616,21 @@ fn run_store(root: &Utf8Path, command: StoreCommand) -> Result<()> {
 fn run_store_root(args: &StoreRootArgs, user_config: Option<&Utf8Path>) -> Result<()> {
     let config = load_user_config(user_config)?;
     let Some(path) = &args.path else {
+        // The file this tool actually reads, not a sibling's. A printed
+        // path a reader edits has to be the one a write lands in, and
+        // mdstore gives each tool its own since 0.4.0.
+        let shown = user_config.map_or_else(
+            || {
+                mdstore::userconfig::config_path(crate::TOOL).map_or_else(
+                    || "no home directory resolves".to_string(),
+                    |p| p.display().to_string(),
+                )
+            },
+            |p| p.to_string(),
+        );
         match config.root_store {
-            Some(root) => println!(
-                "root_store: {} (~/.config/mdstore/config.yml)",
-                root.display()
-            ),
-            None => println!("root_store: unset"),
+            Some(root) => println!("root_store: {} ({shown})", root.display()),
+            None => println!("root_store: unset ({shown})"),
         }
         return Ok(());
     };

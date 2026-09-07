@@ -64,6 +64,29 @@ if [ -z "${MERGE_GATE_SKIP_TESTS:-}" ] || [ -z "${CARGO:-}" ]; then
         printf '%s\n' "$test_out" | tail -40 >&2
         exit 1
     }
+
+    # Every feature alone, and every combination. --all-features above
+    # builds one set out of the powerset, and 0.1.0 published a lib that
+    # compiled under that one and under no other: a constant lived in
+    # the cli module and a store-only consumer could not reach it.
+    # cargo-hack reads the features from cargo metadata, so a new
+    # feature is covered without editing this file.
+    if command -v cargo-hack >/dev/null 2>&1; then
+        # Each feature alone, not the powerset. A powerset over every
+        # target builds the tests once per combination, which ran this
+        # machine out of memory. The powerset belongs in
+        # scripts/prepublish.sh, which runs once per release.
+        echo "merge-gate: cargo hack, every feature alone"
+        hack_out=$(cargo hack check --each-feature --no-dev-deps 2>&1 </dev/null) || {
+            echo "merge-gate: a feature does not build on its own." >&2
+            printf '%s\n' "$hack_out" | tail -30 >&2
+            exit 1
+        }
+    else
+        echo "merge-gate: cargo-hack is missing, so no feature combination was built." >&2
+        echo "  cargo install cargo-hack" >&2
+        exit 1
+    fi
 fi
 
 # The CI runner has no nix, but it preinstalls the packages the

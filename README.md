@@ -102,8 +102,13 @@ stores:
     path: ../team-docs
 ```
 
-A page then writes `[[shared:onboarding]]`. `check` resolves it, and
-`store list` shows every set in the closure with its page count.
+A page then writes `[[shared:onboarding]]`. `store list` shows every set
+in the closure with its page count.
+
+`check` does not resolve a qualified reference. mdstore exposes no
+per-reference resolution across a closure, so `check` reads one set and
+reports a set that did not load, which is why a reference into it cannot
+be answered.
 
 ## The docs subcommand, as a library
 

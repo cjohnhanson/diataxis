@@ -42,7 +42,7 @@ pub fn check(root: &camino::Utf8Path) -> Result<Vec<Finding>> {
     findings.extend(unreadable_pages(&repo)?);
     findings.extend(how_to_titles(&pages));
     findings.extend(broken_links(&repo, &pages)?);
-    findings.extend(foreign_links(root)?);
+    findings.extend(unavailable_sets(root)?);
     findings.extend(missing_types(&pages));
 
     findings.sort_by_key(|f| match f.severity {
@@ -52,21 +52,29 @@ pub fn check(root: &camino::Utf8Path) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
-/// A reference into a declared set that names no page there.
+/// A declared set that could not be loaded.
 ///
-/// `broken_links` reads one set, so it passes over a qualified
-/// reference. The store graph resolves it, and an alias that resolves
-/// to nothing is as broken as a local id that does.
-fn foreign_links(root: &camino::Utf8Path) -> Result<Vec<Finding>> {
+/// A check over one set passes over a qualified reference, and cannot
+/// say whether it resolves. An unavailable set is why: nothing in it is
+/// readable, so every reference into it is unanswerable.
+///
+/// This once claimed to report a cross-set reference that names no
+/// page. It never did. It read the unavailable-set labels and filtered
+/// them for a `:`, which those labels do not carry, so it returned
+/// nothing on every input and hid the unavailable set as well. mdstore
+/// exposes no per-reference resolution across a closure, so the honest
+/// answer is the one this gives.
+fn unavailable_sets(root: &camino::Utf8Path) -> Result<Vec<Finding>> {
     let workspace = crate::workspace::Workspace::open(root)?;
     Ok(workspace
-        .missing()
+        .unavailable_sets()
         .into_iter()
-        .filter(|reference| reference.contains(':'))
-        .map(|reference| Finding {
+        .map(|label| Finding {
             severity: Severity::Fault,
-            subject: "the set".to_string(),
-            message: format!("[[{reference}]] names no page in the set it points at"),
+            subject: "the closure".to_string(),
+            message: format!(
+                "the set {label} did not load, so no reference into it can be checked"
+            ),
         })
         .collect())
 }

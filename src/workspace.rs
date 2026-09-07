@@ -198,11 +198,19 @@ impl Workspace {
         results
     }
 
-    /// Every reference in the closure that names no page.
+    /// Sets in the closure that could not be loaded, by label.
     ///
-    /// A reference into a declared set resolves here, where `check`
-    /// reading one set on its own has to skip it.
-    pub fn missing(&self) -> Vec<String> {
+    /// Named for what mdstore returns. It was called `missing` and
+    /// documented as "every reference that names no page", which it has
+    /// never been: `Snapshot::missing` returns the labels of
+    /// unavailable members, joined with `/`. A caller that filtered
+    /// those for a `:` found nothing and reported no fault, and the
+    /// unavailable set it did hold was dropped by the same filter.
+    ///
+    /// mdstore exposes no per-reference resolution across the closure,
+    /// so a cross-set reference that names no page is not detectable
+    /// here today.
+    pub fn unavailable_sets(&self) -> Vec<String> {
         self.snapshot.missing()
     }
 

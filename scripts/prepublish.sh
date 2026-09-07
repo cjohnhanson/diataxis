@@ -1,50 +1,57 @@
 #!/bin/sh
-# Everything that must be true before a crate publishes.
+# Everything that must be true before this crate publishes.
 #
-# Written after diataxis 0.1.0 published with a lib that did not compile
-# under `--no-default-features --features store`, which is how two of its
-# five consumers take it. `cargo test --all-features` passed, and that was
-# read as proof. A feature a consumer uses and the gate never builds is a
-# feature nobody tested.
+# Written after 0.1.0 published a lib that does not compile under
+# `--no-default-features --features store`, which is how two of five
+# consumers take it. `cargo test --all-features` passed, and that was
+# read as proof. One feature set is not a feature matrix.
+#
+# The first version of this script parsed feature names out of
+# Cargo.toml with awk. A reviewer showed it silently dropped any name
+# holding a digit, a capital, quotes or leading whitespace, and never
+# tried a combination. A silent skip is the class of failure that
+# shipped 0.1.0, so the parsing is cargo-hack's now: it reads features
+# from cargo metadata and walks the powerset.
 set -eu
-CRATE="${1:?usage: prepublish.sh <crate-dir>}"
-cd "$CRATE"
 TC="${TOOLCHAIN:-1.98.0}"
 fail=0
-say() { printf '  %-52s %s\n' "$1" "$2"; }
+say() { printf '  %-46s %s\n' "$1" "$2"; }
+run() {
+  label="$1"; shift
+  if "$@" >/dev/null 2>&1; then say "$label" ok; else say "$label" FAILS; fail=1; fi
+}
 
-# Every feature combination a consumer can ask for, not only all of them
-# at once. Cargo's own `--each-feature` lives in cargo-hack; this covers
-# the sets that exist here without another dependency.
-feats=$(awk '/^\[features\]/{f=1;next} /^\[/{f=0} f && /^[a-z_-]+ *=/{print $1}' Cargo.toml)
-for f in $feats; do
-  if rustup run "$TC" cargo check --no-default-features --features "$f" >/dev/null 2>&1; then
-    say "check --features $f" ok
-  else
-    say "check --features $f" FAILS; fail=1
-  fi
-done
-for args in "--no-default-features" "--all-features" ""; do
-  if rustup run "$TC" cargo check $args >/dev/null 2>&1; then
-    say "check ${args:-<default>}" ok
-  else
-    say "check ${args:-<default>}" FAILS; fail=1
-  fi
-done
+if ! command -v cargo-hack >/dev/null 2>&1; then
+  echo "  prepublish: cargo-hack is missing. cargo install cargo-hack" >&2
+  exit 1
+fi
 
-rustup run "$TC" cargo test --all-features >/dev/null 2>&1 && say "test --all-features" ok || { say "test --all-features" FAILS; fail=1; }
-rustup run "$TC" cargo clippy --all-targets --all-features -- -D warnings >/dev/null 2>&1 && say "clippy" ok || { say "clippy" FAILS; fail=1; }
-rustup run "$TC" cargo fmt --check >/dev/null 2>&1 && say "fmt" ok || { say "fmt" FAILS; fail=1; }
-cargo audit --deny yanked --deny warnings >/dev/null 2>&1 && say "audit" ok || { say "audit" FAILS; fail=1; }
+run "check, every feature alone"  rustup run "$TC" cargo hack check --each-feature --no-dev-deps --all-targets
+# The powerset without --all-targets: building every test once per
+# combination exhausted memory on a 4-feature crate.
+run "check, the feature powerset" rustup run "$TC" cargo hack check --feature-powerset --no-dev-deps
+run "test --all-features"         rustup run "$TC" cargo test --all-features
+run "clippy"                      rustup run "$TC" cargo clippy --all-targets --all-features -- -D warnings
+run "fmt"                         rustup run "$TC" cargo fmt --check
+run "audit"                       cargo audit --deny yanked --deny warnings
 
-# A clean checkout, which is what a runner and a consumer both get.
+# A clean checkout is what a runner and a consumer both get. A patch
+# file in the working tree hides an unresolvable dependency.
 tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
 git archive HEAD | tar -x -C "$tmp"
-( cd "$tmp" && rustup run "$TC" cargo metadata --format-version 1 >/dev/null 2>&1 ) \
-  && say "clean checkout resolves" ok || { say "clean checkout resolves" FAILS; fail=1; }
-( cd "$tmp" && rustup run "$TC" cargo publish --locked --dry-run --allow-dirty >/dev/null 2>&1 ) \
-  && say "publish dry run" ok || { say "publish dry run" FAILS; fail=1; }
-rm -rf "$tmp"
+run "clean checkout resolves" sh -c "cd '$tmp' && rustup run '$TC' cargo metadata --format-version 1"
+run "publish dry run"         sh -c "cd '$tmp' && rustup run '$TC' cargo publish --locked --dry-run --allow-dirty"
+
+# A version already on the registry cannot be republished, and finding
+# that out during the upload wastes the release.
+name=$(rustup run "$TC" cargo metadata --no-deps --format-version 1 | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | head -1)
+ver=$(rustup run "$TC" cargo metadata --no-deps --format-version 1 | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -1)
+if curl -sf -H "User-Agent: prepublish" "https://crates.io/api/v1/crates/$name/$ver" >/dev/null 2>&1; then
+  say "version $ver is unpublished" FAILS; fail=1
+else
+  say "version $ver is unpublished" ok
+fi
 
 [ "$fail" -eq 0 ] && echo "  PRE-PUBLISH: ok" || echo "  PRE-PUBLISH: REFUSED"
 exit "$fail"
