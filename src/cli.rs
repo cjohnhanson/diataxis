@@ -1,6 +1,14 @@
+// `anstream`'s print macros shadow the standard ones for this module.
+// They strip the escapes when the stream is not a terminal, and they
+// honour NO_COLOR, which the previous colouring did not: a piped run
+// carried escapes into the pipe.
+use anstream::{eprintln, println};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Parser;
-use colored::Colorize as _;
+// owo-colors, not colored. colored is MPL-2.0 and was the only copyleft
+// crate in the tree of an MIT one. owo-colors and anstream were both
+// compiled in already, through miette and clap.
+use owo_colors::{AnsiColors, OwoColorize as _};
 
 use crate::check::{Severity, check};
 use crate::error::{Error, Result};
@@ -524,12 +532,14 @@ fn run_check(root: &Utf8Path) -> Result<()> {
     }
     let mut faults = 0;
     for finding in &findings {
+        // The dynamic form, because owo-colors gives each colour its own
+        // type and the two arms must agree on one.
         let label = match finding.severity {
             Severity::Fault => {
                 faults += 1;
-                "fault".red()
+                "fault".color(AnsiColors::Red)
             }
-            Severity::Advice => "advice".yellow(),
+            Severity::Advice => "advice".color(AnsiColors::Yellow),
         };
         println!("{label}  {:<28} {}", finding.subject, finding.message);
     }
