@@ -5,6 +5,6 @@ assertions:
     command: "diataxis check"
     should_fail: true
   - name: "the file does not list as a page"
-    command: "diataxis page list | grep -qv notes"
+    command: "! diataxis page list | grep -q notes"
   - name: "the map passes over it"
     command: "test $(diataxis map | grep -c '(none)') -eq 3"

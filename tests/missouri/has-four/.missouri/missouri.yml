@@ -8,7 +8,7 @@ assertions:
     command: "diataxis check"
     stdout: "no problems found\n"
   - name: "every quadrant holds a page"
-    command: "diataxis map | grep -qv '(none)'"
+    command: "! diataxis map | grep -q '(none)'"
   - name: "the map reads in Diataxis order"
     command: |
       diataxis map | grep -E '^(tutorial|how-to|reference|explanation)' |
