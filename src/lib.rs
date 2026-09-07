@@ -14,6 +14,18 @@
 //! `build`: the build-script helper, which carries no dependencies.
 //! See [`build`].
 
+/// The tool that owns this crate's config path, and the directory it
+/// reads. Not gated: `workspace` needs it with the `cli` feature off,
+/// which is how a consumer that only wants the store takes this crate.
+///
+/// `ToolName::new` refuses a name that cannot be one plain path
+/// component, and "diataxis" is one, so the panic arm cannot be taken.
+#[cfg(feature = "store")]
+pub const TOOL: mdstore::tool::ToolName<'static> = match mdstore::tool::ToolName::new("diataxis") {
+    Some(t) => t,
+    None => panic!("diataxis is a plain name"),
+};
+
 #[cfg(feature = "build")]
 pub mod build;
 
