@@ -307,6 +307,76 @@ mod tests {
         }
     }
 
+    /// A set on disk holding the pages given, removed when dropped.
+    struct Scratch(camino::Utf8PathBuf);
+
+    impl Scratch {
+        fn new(name: &str, pages: &[Page]) -> Self {
+            let dir = camino::Utf8PathBuf::from_path_buf(std::env::temp_dir())
+                .expect("utf-8 temp dir")
+                .join(format!("diataxis-check-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("scratch dir");
+            Repo::init(&dir).expect("init");
+            let repo = Repo::open(&dir).expect("open");
+            for p in pages {
+                let path = repo.path_of(&p.id).expect("plain id");
+                let text = mdstore::serialize_with(
+                    &mdstore::Document {
+                        frontmatter: p.frontmatter.clone(),
+                        body: p.body.clone(),
+                    },
+                    mdstore::Fence::Yaml,
+                )
+                .expect("serialize");
+                std::fs::write(&path, text).expect("write page");
+            }
+            Self(dir)
+        }
+
+        fn repo(&self) -> Repo {
+            Repo::open(&self.0).expect("open")
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn a_reference_naming_no_page_is_a_fault() {
+        // Disabling this check left every suite green, so a set full of
+        // dead references reported clean.
+        let pages = vec![page("one", Kind::Explanation, "One", "see [[absent]]")];
+        let s = Scratch::new("deadref", &pages);
+        let found = broken_links(&s.repo(), &pages).expect("check ran");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].message.contains("absent"), "{:?}", found[0]);
+        assert!(matches!(found[0].severity, Severity::Fault));
+    }
+
+    #[test]
+    fn a_markdown_link_naming_no_file_is_a_fault() {
+        let pages = vec![page("one", Kind::Explanation, "One", "[x](gone.md)")];
+        let s = Scratch::new("deadlink", &pages);
+        let found = broken_links(&s.repo(), &pages).expect("check ran");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].message.contains("gone.md"), "{:?}", found[0]);
+    }
+
+    #[test]
+    fn a_reference_that_resolves_is_no_fault() {
+        let pages = vec![
+            page("one", Kind::Explanation, "One", "see [[two]]"),
+            page("two", Kind::Explanation, "Two", "body"),
+        ];
+        let s = Scratch::new("liveref", &pages);
+        let found = broken_links(&s.repo(), &pages).expect("check ran");
+        assert!(found.is_empty(), "{found:?}");
+    }
+
     #[test]
     fn a_how_to_title_that_states_no_goal_is_a_fault() {
         let pages = vec![page("a", Kind::HowTo, "Integrating monitoring", "")];
