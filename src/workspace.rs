@@ -131,7 +131,7 @@ impl Workspace {
     }
 
     fn open_with(root: &Utf8Path, fetching: bool) -> Result<Self> {
-        let registry = Registry::load(crate::cli::TOOL).unwrap_or_default();
+        let registry = Registry::load(crate::TOOL).unwrap_or_default();
         let graph = if fetching {
             let locator = RegistryLocator::new(registry, FetchingLocator);
             StoreGraph::open(root.as_std_path(), &locator)?
