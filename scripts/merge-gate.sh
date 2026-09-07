@@ -71,7 +71,10 @@ if [ -z "${MERGE_GATE_SKIP_TESTS:-}" ] || [ -z "${CARGO:-}" ]; then
     # the cli module and a store-only consumer could not reach it.
     # cargo-hack reads the features from cargo metadata, so a new
     # feature is covered without editing this file.
-    if command -v cargo-hack >/dev/null 2>&1; then
+    # `cargo hack`, not `command -v cargo-hack`. cargo finds its own
+    # subcommands in its bin directory, which a hook's PATH need not
+    # carry, and the check refused a push on a tool that was installed.
+    if cargo hack --version >/dev/null 2>&1; then
         # Each feature alone, not the powerset. A powerset over every
         # target builds the tests once per combination, which ran this
         # machine out of memory. The powerset belongs in
