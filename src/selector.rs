@@ -10,6 +10,13 @@ use crate::page::Page;
 /// selector that quietly picked the first match would edit the wrong
 /// page.
 pub fn pick(pages: Vec<Page>, selector: &str) -> Result<Page> {
+    // An empty selector is a zero-length prefix, so it matches every
+    // page. In a one-page set that is a unique match, and
+    // `page delete "$ID"` with ID unset deleted the only page at exit 0.
+    // A two-page set refused the same call, which hid it.
+    if selector.is_empty() {
+        return Err(Error::NoSuchPage("an empty name".to_string()));
+    }
     let mut matches: Vec<Page> = Vec::new();
     for page in pages {
         if page.id == selector {
@@ -71,6 +78,20 @@ mod tests {
     fn a_prefix_matching_one_page_resolves() {
         let pages = vec![page("install-nix"), page("release")];
         assert_eq!(pick(pages, "install").expect("one").id, "install-nix");
+    }
+
+    #[test]
+    fn an_empty_selector_refuses_even_in_a_one_page_set() {
+        // The dangerous case: one page, so an empty string is a unique
+        // prefix match. `page delete "$ID"` with ID unset deleted it.
+        let err = pick(vec![page("only")], "").expect_err("empty refused");
+        assert!(matches!(err, Error::NoSuchPage(_)), "{err:?}");
+    }
+
+    #[test]
+    fn an_empty_selector_refuses_in_a_larger_set() {
+        let err = pick(vec![page("one"), page("two")], "").expect_err("empty refused");
+        assert!(matches!(err, Error::NoSuchPage(_)), "{err:?}");
     }
 
     #[test]

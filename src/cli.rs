@@ -25,7 +25,11 @@ pub struct Args {
     /// Documentation set directory. Literal: the directory must hold
     /// diataxis.yml; no walk, no fallback. Without it, the nearest
     /// diataxis.yml at or above the cwd is used.
-    #[arg(long, global = true)]
+    ///
+    /// An empty value is refused. It read as a relative path, joined to
+    /// nothing, and acted on the working directory instead, so an unset
+    /// variable wrote to whichever set the shell happened to stand in.
+    #[arg(long, global = true, value_parser = non_empty_root)]
     pub root: Option<Utf8PathBuf>,
 
     /// Act on the configured root store, wherever the command runs.
@@ -286,6 +290,21 @@ pub fn run(args: Args) -> Result<()> {
         .map_err(|p| Error::General(format!("non-UTF-8 root {}", p.display())))?;
     announce(&root, &cwd, resolved.via, intent);
     run_command(&root, args.command)
+}
+
+/// Refuse an empty `--root`.
+///
+/// An empty value read as a relative path and joined to nothing, so it
+/// named the working directory. An unset shell variable then wrote to
+/// whichever set the shell stood in, against this option's own contract
+/// that the directory must hold diataxis.yml with no fallback.
+fn non_empty_root(value: &str) -> std::result::Result<Utf8PathBuf, String> {
+    if value.trim().is_empty() {
+        return Err(
+            "--root takes a directory holding diataxis.yml, not an empty value".to_string(),
+        );
+    }
+    Ok(Utf8PathBuf::from(value))
 }
 
 fn cwd_utf8() -> Result<Utf8PathBuf> {
