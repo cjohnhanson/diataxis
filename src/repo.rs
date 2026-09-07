@@ -249,3 +249,79 @@ fn split_list(raw: Option<&str>) -> Vec<String> {
     })
     .unwrap_or_default()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A set in a fresh directory, removed when the test ends.
+    struct Scratch(Utf8PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            let dir = Utf8PathBuf::from_path_buf(std::env::temp_dir())
+                .expect("utf-8 temp dir")
+                .join(format!("diataxis-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("scratch dir");
+            Repo::init(&dir).expect("init");
+            Self(dir)
+        }
+
+        fn repo(&self) -> Repo {
+            Repo::open(&self.0).expect("open")
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn a_page_name_that_climbs_out_is_refused() {
+        // path_of joins its argument onto the pages directory. Without
+        // the guard, `../../evil` names a file outside the set and every
+        // caller that writes reaches it: create, edit and delete alike.
+        let s = Scratch::new("traversal");
+        let repo = s.repo();
+        for id in ["../evil", "../../evil", "a/b", "/tmp/evil", ".", "..", ""] {
+            let refused = repo.path_of(id);
+            assert!(refused.is_err(), "{id} resolved to {refused:?}");
+        }
+    }
+
+    #[test]
+    fn a_plain_page_name_resolves_inside_the_pages_directory() {
+        let s = Scratch::new("plain");
+        let repo = s.repo();
+        let path = repo.path_of("install").expect("plain name");
+        let dir = repo.docs_dir().expect("docs dir");
+        assert!(path.starts_with(&dir), "{path} escaped {dir}");
+        assert_eq!(path.file_name(), Some("install.md"));
+    }
+
+    #[test]
+    fn create_refuses_a_page_that_exists() {
+        // Without the refusal, a second create overwrites the first and
+        // its body is gone with no message.
+        let s = Scratch::new("overwrite");
+        let repo = s.repo();
+        let opts = || CreatePageOptions {
+            description: None,
+            tags: None,
+            body: Some("the original body".to_string()),
+            id: Some("install".to_string()),
+        };
+        repo.create("Install", Kind::HowTo, opts()).expect("first");
+        let again = repo.create("Install again", Kind::Tutorial, opts());
+        assert!(
+            matches!(again, Err(Error::PageExists(ref id)) if id == "install"),
+            "second create gave {again:?}"
+        );
+        let kept = repo.get("install").expect("still there");
+        assert_eq!(kept.frontmatter.title, "Install");
+        assert!(kept.body.contains("the original body"));
+    }
+}

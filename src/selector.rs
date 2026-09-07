@@ -28,3 +28,54 @@ pub fn pick(pages: Vec<Page>, selector: &str) -> Result<Page> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::page::{Kind, PageFrontmatter};
+
+    fn page(id: &str) -> Page {
+        Page {
+            id: id.to_string(),
+            frontmatter: PageFrontmatter {
+                title: id.to_string(),
+                description: String::new(),
+                kind: Kind::Explanation,
+                tags: Vec::new(),
+            },
+            body: String::new(),
+            fence: mdstore::Fence::Yaml,
+        }
+    }
+
+    #[test]
+    fn an_exact_id_wins_over_a_longer_page_it_prefixes() {
+        // `install` must reach `install`, not the two pages it prefixes.
+        let pages = vec![page("install"), page("install-nix"), page("install-brew")];
+        assert_eq!(pick(pages, "install").expect("exact").id, "install");
+    }
+
+    #[test]
+    fn an_ambiguous_prefix_refuses_and_names_every_match() {
+        // Taking the first match silently edits or deletes a page the
+        // reader did not name. The refusal has to carry the candidates,
+        // because the reader's next move is to pick one.
+        let pages = vec![page("install-nix"), page("install-brew")];
+        let err = pick(pages, "install").expect_err("ambiguous");
+        let text = err.to_string();
+        assert!(text.contains("install-nix"), "{text}");
+        assert!(text.contains("install-brew"), "{text}");
+    }
+
+    #[test]
+    fn a_prefix_matching_one_page_resolves() {
+        let pages = vec![page("install-nix"), page("release")];
+        assert_eq!(pick(pages, "install").expect("one").id, "install-nix");
+    }
+
+    #[test]
+    fn a_selector_matching_nothing_refuses() {
+        let err = pick(vec![page("install")], "absent").expect_err("none");
+        assert!(matches!(err, Error::NoSuchPage(_)), "{err:?}");
+    }
+}
