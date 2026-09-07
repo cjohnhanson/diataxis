@@ -25,11 +25,18 @@ diataxis check
 ```
 
 A page with no type, or with a type that is not one of the four, comes
-back as a fault. Give it one:
+back as a fault. Give it one by editing the file, in the frontmatter:
 
-```sh
-diataxis page edit composition -T explanation
+```yaml
+---
+title: Composition
+type: explanation
+---
 ```
+
+`page edit` does not reach such a file. Every command that reads a page
+reads its type first, so a file with no type is not yet a page to them.
+Adding the field by hand is what makes it one, and `check` passes after.
 
 ## Embed the set
 

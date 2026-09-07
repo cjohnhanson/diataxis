@@ -15,7 +15,9 @@ Every command that reads or writes a documentation set takes these.
 | `--root <ROOT>` | Act on this directory. Literal: it must hold `diataxis.yml`. No walk, no fallback. |
 | `--home` | Act on the configured root set, wherever the command runs. Conflicts with `--root`. |
 | `-h`, `--help` | Print help. |
-| `-V`, `--version` | Print the version. |
+
+`-V` and `--version` take the top level only: `diataxis --version`. A
+subcommand refuses them with an unexpected-argument error.
 
 Without `--root` or `--home`, a command uses the nearest `diataxis.yml`
 at or above the working directory. With none, a read falls back to the

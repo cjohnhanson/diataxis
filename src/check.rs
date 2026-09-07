@@ -307,6 +307,47 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_set_that_did_not_load_is_a_fault() {
+        // This check read the labels of unavailable sets and filtered
+        // them for a `:` they do not carry, so it returned nothing on
+        // every input and hid the condition it exists to report.
+        // Nothing tested it, so restoring that filter left every suite
+        // green.
+        let s = Scratch::new("unavailable", &[]);
+        std::fs::write(
+            s.0.join("stores.yml"),
+            "stores:\n  - alias: absent\n    path: ../no-such-set\n",
+        )
+        .expect("declare a set that is not there");
+        let found = unavailable_sets(&s.0).expect("check ran");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].message.contains("absent"), "{:?}", found[0]);
+        assert!(matches!(found[0].severity, Severity::Fault));
+    }
+
+    #[test]
+    fn a_set_with_no_declarations_reports_nothing() {
+        let s = Scratch::new("no-decls", &[]);
+        let found = unavailable_sets(&s.0).expect("check ran");
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn an_email_autolink_is_not_a_page_link() {
+        // pulldown-cmark reads `<a@b.md>` as an autolink, and its
+        // destination ends in `.md`. Without the autolink guard the
+        // check reports a fault on an address.
+        let (_, links) = prose_targets("write to <someone@example.md> about it");
+        assert!(links.is_empty(), "an address read as a link: {links:?}");
+    }
+
+    #[test]
+    fn a_bare_url_autolink_is_not_a_page_link() {
+        let (_, links) = prose_targets("see <https://example.com/page.md>");
+        assert!(links.is_empty(), "a url read as a page: {links:?}");
+    }
+
     /// A set on disk holding the pages given, removed when dropped.
     struct Scratch(camino::Utf8PathBuf);
 
