@@ -22,10 +22,11 @@ From a checkout instead:
 cargo install --git https://github.com/cjohnhanson/diataxis
 ```
 
-Two things the build needs. Rust 1.85 or later, because this crate is
-edition 2024. And a C compiler: the store reads a remote over HTTPS, and
-that TLS stack builds a C library. On Debian and Ubuntu that is
-`build-essential`; on macOS, the Xcode command line tools.
+Two things the build needs. Rust 1.88 or later: the code uses
+let-chains, and a locked dependency asks for 1.88 itself. And a C
+compiler, because the store reads a remote over HTTPS and that TLS stack
+builds a C library. On Debian and Ubuntu that is `build-essential`; on
+macOS, the Xcode command line tools.
 
 This is a library first. A consumer that only reads and writes pages
 takes the `store` feature and needs neither the command nor its
