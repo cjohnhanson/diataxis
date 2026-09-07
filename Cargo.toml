@@ -1,6 +1,6 @@
 [package]
 name = "diataxis"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Diataxis documentation sets as typed markdown, for humans and coding agents"
 license = "MIT"

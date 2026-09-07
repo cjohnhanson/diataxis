@@ -5,6 +5,11 @@
 //! and gaff reserves 2 for a guard refusing a tool call. This test
 //! stands in for that caller: it names files, asks for text, and keeps
 //! its own exit codes.
+//!
+//! `DocSet`, `Request` and `docs` are the store half, so this whole file
+//! needs that feature. Without the gate it failed under `--features
+//! build` alone, which is how a build-dependency takes this crate.
+#![cfg(feature = "store")]
 
 use diataxis::{DocSet, Request};
 
