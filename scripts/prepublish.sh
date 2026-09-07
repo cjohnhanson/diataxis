@@ -26,7 +26,10 @@ if ! cargo hack --version >/dev/null 2>&1; then
   exit 1
 fi
 
-run "check, every feature alone"  rustup run "$TC" cargo hack check --each-feature --no-dev-deps --all-targets
+# --no-dev-deps and --all-targets are mutually exclusive in cargo-hack,
+# and the pair silently made this line an error rather than a check.
+run "check, every feature alone"  rustup run "$TC" cargo hack check --each-feature --no-dev-deps
+run "check, every feature, tests" rustup run "$TC" cargo hack check --each-feature --all-targets
 # The powerset without --all-targets: building every test once per
 # combination exhausted memory on a 4-feature crate.
 run "check, the feature powerset" rustup run "$TC" cargo hack check --feature-powerset --no-dev-deps
@@ -45,8 +48,14 @@ run "publish dry run"         sh -c "cd '$tmp' && rustup run '$TC' cargo publish
 
 # A version already on the registry cannot be republished, and finding
 # that out during the upload wastes the release.
-name=$(rustup run "$TC" cargo metadata --no-deps --format-version 1 | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | head -1)
-ver=$(rustup run "$TC" cargo metadata --no-deps --format-version 1 | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -1)
+# Read the package, not the first "name" in the json. The sed that
+# stood here matched a build-script target and asked crates.io about a
+# crate named build-script-build, which 404s, so this check reported
+# every version unpublished. A check that passes by failing is worse
+# than no check.
+meta=$(rustup run "$TC" cargo metadata --no-deps --format-version 1)
+name=$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["name"])')
+ver=$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
 if curl -sf -H "User-Agent: prepublish" "https://crates.io/api/v1/crates/$name/$ver" >/dev/null 2>&1; then
   say "version $ver is unpublished" FAILS; fail=1
 else
