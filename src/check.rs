@@ -158,8 +158,8 @@ fn broken_links(repo: &Repo, pages: &[Page]) -> Result<Vec<Finding>> {
     let known: Vec<&str> = pages.iter().map(|p| p.id.as_str()).collect();
     let mut findings = Vec::new();
     for page in pages {
-        let prose = prose_only(&page.body);
-        for target in wiki_targets(&prose) {
+        let (wiki, links) = prose_targets(&page.body);
+        for target in wiki {
             // A qualified reference names a declared store, and this
             // check reads one store, so it cannot resolve it.
             if target.contains(':') {
@@ -173,7 +173,7 @@ fn broken_links(repo: &Repo, pages: &[Page]) -> Result<Vec<Finding>> {
                 });
             }
         }
-        for target in markdown_targets(&prose) {
+        for target in links {
             if !dir.join(&target).exists() {
                 findings.push(Finding {
                     severity: Severity::Fault,
@@ -186,67 +186,92 @@ fn broken_links(repo: &Repo, pages: &[Page]) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
-/// The body with every code span and fenced block removed.
+/// Every reference and every relative `.md` link a page's prose names.
 ///
 /// A link check reads prose only. Documentation quotes syntax
 /// constantly, and `[[note-id]]` inside backticks is an example of a
-/// reference rather than a reference. Scanning code produced a fault on
-/// a page that was correct, which is the one thing a check must not do.
-fn prose_only(body: &str) -> String {
-    let mut out = String::with_capacity(body.len());
-    let mut fenced = false;
-    for line in body.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            fenced = !fenced;
-            out.push('\n');
-            continue;
-        }
-        if fenced {
-            out.push('\n');
-            continue;
-        }
-        out.push_str(&strip_code_spans(line));
-        out.push('\n');
-    }
-    out
-}
-
-/// One line with its inline code spans removed.
+/// reference rather than a reference.
 ///
-/// A span opens on a run of backticks and closes on a run of the same
-/// length. An unclosed run is text, so the rest of the line is kept.
-fn strip_code_spans(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut rest = line;
-    while let Some(open) = rest.find('`') {
-        out.push_str(&rest[..open]);
-        let after = &rest[open..];
-        let ticks = after.len() - after.trim_start_matches('`').len();
-        let fence = &after[..ticks];
-        let body = &after[ticks..];
-        match body.find(fence) {
-            Some(close) => rest = &body[close + ticks..],
-            None => {
-                out.push_str(after);
-                return out;
+/// pulldown-cmark decides what is prose. Three hand-rolled scanners
+/// stood here before: one stripped fenced blocks by counting backtick
+/// runs at the start of a line, one stripped inline spans, and one
+/// found link targets by searching for `](`. Together they reported a
+/// reference inside an indented code block and inside a fenced block
+/// within a blockquote, and they missed `[a](page.md "a title")`
+/// because the raw span did not end in `.md`. A CommonMark parser
+/// answers all three, and this crate is not the place to write one.
+fn prose_targets(body: &str) -> (Vec<String>, Vec<String>) {
+    use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
+
+    let mut prose = String::with_capacity(body.len());
+    let mut links = Vec::new();
+
+    // A text event carries no code: pulldown-cmark reports a code span
+    // and a code block as their own events, indented blocks included.
+    //
+    // The text is collected rather than scanned event by event.
+    // `[[one]]` is not CommonMark, so the parser reads the inner
+    // `[one]` as a shortcut link reference and splits the run into
+    // three events. A scan of each one alone finds no marker.
+    // An inline code span arrives as its own event and never reaches
+    // the buffer. A code block's content arrives as text, fenced and
+    // indented alike, so the block is tracked and its text dropped.
+    let mut in_code_block = false;
+    for event in Parser::new_ext(body, Options::empty()) {
+        match event {
+            Event::Start(Tag::CodeBlock(_)) => in_code_block = true,
+            Event::End(TagEnd::CodeBlock) => {
+                in_code_block = false;
+                prose.push('\n');
             }
+            Event::Text(text) if !in_code_block => prose.push_str(&text),
+            Event::SoftBreak | Event::HardBreak => prose.push('\n'),
+            Event::End(_) => prose.push('\n'),
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                ..
+            }) => {
+                // An autolink is a url by definition, and a shortcut
+                // link with no definition is prose rather than a link.
+                if matches!(link_type, LinkType::Autolink | LinkType::Email) {
+                    continue;
+                }
+                if let Some(target) = relative_page(&dest_url) {
+                    links.push(target);
+                }
+            }
+            _ => {}
         }
     }
-    out.push_str(rest);
-    out
+    (wiki_targets(&prose), links)
 }
 
-/// Every `[[reference]]` a page body holds, code excluded.
+/// Every `[[reference]]` a page's prose names.
 ///
-/// The store graph needs the same list the link check reads, so both
-/// take it from here and cannot disagree about what a reference is.
-#[must_use]
+/// `workspace` builds the closure from these, and it must see what a
+/// reader sees: a reference inside a code span is an example, and the
+/// closure does not follow it.
 pub fn body_refs(body: &str) -> Vec<String> {
-    wiki_targets(&prose_only(body))
+    prose_targets(body).0
 }
 
-/// Every `[[target]]` in a body.
+/// A link destination that names a page file beside this one.
+///
+/// The title a destination may carry is pulldown-cmark's to strip, so
+/// this sees the url alone.
+fn relative_page(dest: &str) -> Option<String> {
+    let target = dest.trim();
+    if target.contains("://") || target.starts_with('#') || !target.ends_with(".md") {
+        return None;
+    }
+    Some(target.to_string())
+}
+
+/// Every `[[reference]]` in one run of text.
+///
+/// Not CommonMark, so pulldown-cmark passes it through as text and this
+/// reads it there, which is what keeps a reference inside code out.
 fn wiki_targets(body: &str) -> Vec<String> {
     let mut targets = Vec::new();
     let mut rest = body;
@@ -260,25 +285,6 @@ fn wiki_targets(body: &str) -> Vec<String> {
             targets.push(target.to_string());
         }
         rest = &from_open[end + 2..];
-    }
-    targets
-}
-
-/// Every relative `.md` link target in a body.
-fn markdown_targets(body: &str) -> Vec<String> {
-    let mut targets = Vec::new();
-    let mut rest = body;
-    while let Some(open) = rest.find("](") {
-        let from_open = &rest[open + 2..];
-        let Some(close) = from_open.find(')') else {
-            break;
-        };
-        let target = from_open[..close].trim();
-        let is_relative = !target.contains("://") && !target.starts_with('#');
-        if is_relative && target.ends_with(".md") {
-            targets.push(target.to_string());
-        }
-        rest = &from_open[close + 1..];
     }
     targets
 }
@@ -337,42 +343,75 @@ mod tests {
     }
 
     #[test]
-    fn markdown_targets_keeps_relative_pages_only() {
-        let body = "[a](other.md) [b](https://example.com/x.md) [c](#anchor) [d](img.png)";
-        assert_eq!(markdown_targets(body), ["other.md"]);
-    }
-
-    #[test]
     fn a_reference_inside_backticks_is_not_a_link() {
         let body = "A note declares a link inline in its body (`[[note-id]]`).";
-        assert!(wiki_targets(&prose_only(body)).is_empty());
+        assert!(body_refs(body).is_empty());
     }
 
     #[test]
     fn a_reference_inside_a_fenced_block_is_not_a_link() {
         let body = "before\n\n```\nsee [[other]] and [x](y.md)\n```\n\nafter";
-        let prose = prose_only(body);
-        assert!(wiki_targets(&prose).is_empty());
-        assert!(markdown_targets(&prose).is_empty());
+        let (wiki, links) = prose_targets(body);
+        assert!(wiki.is_empty(), "{wiki:?}");
+        assert!(links.is_empty(), "{links:?}");
     }
 
     #[test]
-    fn a_reference_in_prose_survives_the_strip() {
+    fn a_reference_in_prose_survives() {
         let body = "see [[other]] and `code` and [x](y.md)";
-        let prose = prose_only(body);
-        assert_eq!(wiki_targets(&prose), ["other"]);
-        assert_eq!(markdown_targets(&prose), ["y.md"]);
+        let (wiki, links) = prose_targets(body);
+        assert_eq!(wiki, ["other"]);
+        assert_eq!(links, ["y.md"]);
     }
 
     #[test]
-    fn an_unclosed_backtick_run_keeps_the_rest_of_the_line() {
-        assert_eq!(strip_code_spans("a `b c"), "a `b c");
-        assert_eq!(strip_code_spans("a ``b`` c"), "a  c");
+    fn an_unclosed_backtick_run_is_prose() {
+        // A lone backtick opens nothing, so a reference after it is a
+        // reference. The stripper this replaced had its own rule for
+        // that; CommonMark already says it.
+        assert_eq!(body_refs("a ` [[one]]"), ["one"]);
+        assert!(body_refs("a ``[[two]]`` c").is_empty());
     }
 
     #[test]
     fn body_refs_reads_prose_and_not_code() {
-        let body = "see [[one]]\n\n```\n[[two]]\n```\n\nand `[[three]]`";
+        let body = "see [[one]] and `[[two]]`";
         assert_eq!(body_refs(body), ["one"]);
+    }
+
+    #[test]
+    fn an_indented_code_block_is_not_prose() {
+        // Four spaces open a code block in CommonMark. The scanner this
+        // replaced read the line as prose and reported a fault on a
+        // page that was correct.
+        let body = "text\n\n    [[ghost-indented]]\n    [a](gone-indented.md)\n";
+        let (wiki, links) = prose_targets(body);
+        assert!(wiki.is_empty(), "indented code gave {wiki:?}");
+        assert!(links.is_empty(), "indented code gave {links:?}");
+    }
+
+    #[test]
+    fn a_fenced_block_inside_a_blockquote_is_not_prose() {
+        // The scanner this replaced matched a fence only at the start
+        // of a line, so a quoted fence never opened and its body read
+        // as prose.
+        let body = "> ```\n> [[ghost-blockquote]]\n> ```\n";
+        let (wiki, _) = prose_targets(body);
+        assert!(wiki.is_empty(), "a quoted fence gave {wiki:?}");
+    }
+
+    #[test]
+    fn a_link_with_a_title_is_still_a_link() {
+        // The scanner this replaced required the raw span to end in
+        // `.md`, so a title after the url hid a genuinely broken link.
+        let (_, links) = prose_targets("[y](also-gone.md \"the title\")");
+        assert_eq!(links, ["also-gone.md"]);
+    }
+
+    #[test]
+    fn a_url_and_an_anchor_are_not_pages() {
+        let (_, links) =
+            prose_targets("[a](other.md) [b](https://example.com/x.md) [c](#anchor) [d](img.png)");
+        assert_eq!(links, ["other.md"]);
     }
 }
