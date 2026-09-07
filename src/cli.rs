@@ -239,10 +239,19 @@ pub use crate::docs::DocsArgs;
 /// directory with no files present.
 static DOCS: &[(&str, &str)] = crate::embedded_docs!();
 
+/// The tool that owns this config path. `ToolName::new` refuses a name
+/// that cannot be one plain path component, and "diataxis" is one, so
+/// the unwrap cannot fire.
+pub const TOOL: mdstore::tool::ToolName<'static> =
+    match mdstore::tool::ToolName::new("diataxis") {
+        Some(t) => t,
+        None => panic!("diataxis is a plain name"),
+    };
+
 const VOCAB: mdstore::resolve::Vocabulary<'static> = mdstore::resolve::Vocabulary {
     marker: "diataxis.yml",
     noun: "documentation set",
-    tool: "diataxis",
+    tool: TOOL,
 };
 
 pub fn run(args: Args) -> Result<()> {
@@ -288,7 +297,7 @@ fn cwd_utf8() -> Result<Utf8PathBuf> {
 fn load_user_config(path: Option<&Utf8Path>) -> Result<mdstore::userconfig::UserConfig> {
     let loaded = match path {
         Some(p) => mdstore::userconfig::UserConfig::load_from(p.as_std_path()),
-        None => mdstore::userconfig::UserConfig::load(),
+        None => mdstore::userconfig::UserConfig::load(TOOL),
     };
     loaded.map_err(|e| Error::General(e.to_string()))
 }
@@ -646,7 +655,7 @@ fn run_store_root(args: &StoreRootArgs, user_config: Option<&Utf8Path>) -> Resul
     let old = config.root_store.clone();
     let target = user_config
         .map(|p| p.as_std_path().to_path_buf())
-        .or_else(mdstore::userconfig::config_path)
+        .or_else(|| mdstore::userconfig::config_path(TOOL))
         .ok_or_else(|| Error::General("no home directory resolves".to_string()))?;
     mdstore::userconfig::UserConfig::save_root_to(&target, abs.as_std_path())
         .map_err(|e| Error::General(e.to_string()))?;

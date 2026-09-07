@@ -32,7 +32,7 @@ exclude = [
 [dependencies]
 # The store half: pages, types, the check, and the bundled set.
 camino = { version = "1", features = ["serde1"], optional = true }
-mdstore = { version = "0.3", package = "mdstore-core", optional = true }
+mdstore = { version = "0.5", package = "mdstore-core", optional = true }
 regex = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 thiserror = { version = "2", optional = true }
