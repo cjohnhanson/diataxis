@@ -21,7 +21,7 @@ run() {
   if "$@" >/dev/null 2>&1; then say "$label" ok; else say "$label" FAILS; fail=1; fi
 }
 
-if ! command -v cargo-hack >/dev/null 2>&1; then
+if ! cargo hack --version >/dev/null 2>&1; then
   echo "  prepublish: cargo-hack is missing. cargo install cargo-hack" >&2
   exit 1
 fi
