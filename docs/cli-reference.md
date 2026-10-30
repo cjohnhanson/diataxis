@@ -1,228 +1,312 @@
 <!-- metadata
-title: "diataxis CLI Reference"
-description: "Every command, argument, and option of the diataxis binary"
+title: diataxis CLI reference
+description: Every command, argument, and flag of the diataxis binary, generated from its definition
 type: reference
 -->
 
-# diataxis CLI Reference
+# diataxis CLI reference
 
-## Global options
+- **Version:** 0.1.1
 
-Every command that reads or writes a documentation set takes these.
+Diataxis documentation sets as typed markdown
 
-| Option | Effect |
-|---|---|
-| `--root <ROOT>` | Act on this directory. Literal: it must hold `diataxis.yml`. No walk, no fallback. |
-| `--home` | Act on the configured root set, wherever the command runs. Conflicts with `--root`. |
-| `-h`, `--help` | Print help. |
 
-`-V` and `--version` take the top level only: `diataxis --version`. A
-subcommand refuses them with an unexpected-argument error.
+- **Usage:** `diataxis [--root <ROOT>] [--home] <SUBCOMMAND>`
 
-Without `--root` or `--home`, a command uses the nearest `diataxis.yml`
-at or above the working directory. With none, a read falls back to the
-configured root set and names it on stderr.
+## Global Flags
 
-## init
+### `--root <ROOT>`
 
-```
-diataxis init
-```
+Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
 
-Writes `diataxis.yml` and makes the pages directory. An existing
-directory of pages is adopted, so a repository with docs already
-written runs `init` once and keeps every page.
+An empty value is refused. It read as a relative path, joined to nothing, and acted on the working directory instead, so an unset variable wrote to whichever set the shell happened to stand in.
+
+### `--home`
+
+Act on the configured root store, wherever the command runs.
+
+Without `--root` or `--home`, a command uses the nearest `diataxis.yml` at or above the working directory. With none, a read falls back to the configured root set and names it on stderr.
+
+## `diataxis init`
+
+- **Usage:** `diataxis init`
+
+Initialize a documentation set in the current directory
+
+Writes `diataxis.yml` and makes the pages directory. An existing directory of pages is adopted, so a repository with docs already written runs `init` once and keeps every page.
 
 Fails when `diataxis.yml` exists.
 
-## page create
+## `diataxis prime`
 
-```
-diataxis page create [OPTIONS] --type <TYPE> <TITLE>
-```
+- **Usage:** `diataxis prime`
 
-| Argument | Effect |
-|---|---|
-| `<TITLE>` | The page title. A how-to title states a goal: "How to ...". |
-| `-T`, `--type <TYPE>` | `tutorial`, `how-to`, `reference`, or `explanation`. |
-| `-d`, `--description <TEXT>` | The one-line description. |
-| `-t`, `--tags <TAGS>` | Tags, separated by commas. |
-| `-b`, `--body <TEXT>` | The page body. |
-| `--id <ID>` | The file stem, when the slug from the title is not wanted. |
+Print what diataxis is and how to use it, for an agent's context
 
-The type also accepts `guide`, `howto`, `how_to`, and `how-to-guide`
-for a how-to guide, and `discussion` or `background` for an
-explanation. Thirteen pages in four repositories were written with
-`guide` before this tool existed.
+Depends only on the binary, so it runs from any directory.
+
+## `diataxis page`
+
+- **Usage:** `diataxis page <SUBCOMMAND>`
+
+Manage pages
+
+## `diataxis page create`
+
+- **Usage:** `diataxis page create <FLAGS> <TITLE>`
+
+Create a page of one type
+
+The type also accepts `guide`, `howto`, `how_to`, and `how-to-guide` for a how-to guide, and `discussion` or `background` for an explanation.
 
 Fails when a page of that id already exists.
 
-## page list
+### Arguments
 
-```
-diataxis page list [-T <TYPE>]
-```
+#### `<TITLE>`
 
-One line per page: the id, the type, and the title. `-T` shows one type
-only.
+The page title. A how-to title states a goal: "How to ..."
 
-## page show
+### Flags
 
-```
-diataxis page show <PAGE>
-```
+#### `-T --type <TYPE>`
 
-Prints the metadata and the body. `<PAGE>` is a page id or a unique
-prefix of one. An ambiguous prefix is an error that names what it
-matched.
+The Diataxis type: tutorial, how-to, reference, or explanation
 
-## page edit
+#### `-d --description <DESCRIPTION>`
 
-```
-diataxis page edit [OPTIONS] <PAGE>
-```
+The one-line description
 
-| Option | Effect |
-|---|---|
-| `--title <TEXT>` | Replace the title. |
-| `-d`, `--description <TEXT>` | Replace the description. |
-| `-T`, `--type <TYPE>` | Retype the page. |
-| `-t`, `--tags <TAGS>` | Replace the tags. |
-| `-b`, `--body <TEXT>` | Replace the body. |
+#### `-t --tags <TAGS>`
 
-A field left out is left alone. The page is written back in the fence
-form it was read in, so an edit never converts a file.
+Tags, separated by commas
 
-## page delete
+#### `-b --body <BODY>`
 
-```
-diataxis page delete <PAGE>
-```
+The page body
 
-Removes the file.
+#### `--id <ID>`
 
-## page path
+The file stem, when the slug from the title is not wanted
 
-```
-diataxis page path <PAGE>
-```
+## `diataxis page list`
 
-Prints the file path. Use it to open a page in an editor.
+- **Usage:** `diataxis page list [-T --type <TYPE>]`
 
-## map
+List the pages
 
-```
-diataxis map
-```
+One line per page: the id, the type, and the title.
 
-Prints the set as the four quadrants, in Diátaxis order: tutorial,
-how-to, reference, explanation. Each names what it informs and what it
-serves, with its pages under it. A type with no pages prints `(none)`.
+### Flags
 
-## compass
+#### `-T --type <TYPE>`
 
-```
-diataxis compass [<PAGE>]
-```
+Show one type only
 
-Prints the two questions that name a type, and the table that turns a
-pair of answers into one. Given a page, it prints that page's declared
-type alongside.
+## `diataxis page show`
 
-The compass does not classify a page. Classification needs a reader,
-and a tool that guessed would be inventing a fact.
+- **Usage:** `diataxis page show <PAGE>`
 
-Without a page, the compass resolves no set and runs from any
-directory. An agent recalls the two questions without standing in one.
+Show one page
 
-## check
+Prints the metadata and the body. An ambiguous prefix is an error that names what it matched.
 
-```
-diataxis check
-```
+### Arguments
 
-Reports two kinds of finding, faults first. A fault is provable from
-the files. Advice is a gap worth seeing that is not wrong on its own.
+#### `<PAGE>`
 
-| Finding | Severity |
-|---|---|
-| A markdown file in the pages directory that is not a page | fault |
-| A how-to title that does not state a goal | fault |
-| A `[[reference]]` that names no page | fault |
-| A relative `.md` link that names no file | fault |
-| A declared set that did not load | fault |
-| A type with no pages | advice |
+The page id, or a unique prefix of one
 
-Exits non-zero when a fault is found. A reference inside a code span or
-a fenced block is not a link, so documentation that quotes syntax is
-not reported.
+## `diataxis page edit`
 
-Nothing here judges prose. Whether an explanation has crept into a
-reference page needs a reader.
+- **Usage:** `diataxis page edit [FLAGS] <PAGE>`
 
-## search
+Change a page
 
-```
-diataxis search <PATTERN>
-```
+A field left out is left alone. The page is written back in the metadata form it was read in, so an edit never converts a file.
 
-A regular expression, matched against every page body without regard to
-case. Prints the page id, the line number, the type, and the line.
+### Arguments
 
-## store list
+#### `<PAGE>`
 
-```
-diataxis store list
-```
+The page id, or a unique prefix of one
 
-One row per set in the closure: this set first, then each declared set
-under its alias, with its source and its page count. A remote set shows
-the time since its last fetch.
+### Flags
 
-## store sync
+#### `--title <TITLE>`
 
-```
-diataxis store sync
-```
+Replace the title
 
-Fetches every declared remote set into the local cache. Exits non-zero
-when a fetch fails. No other command reaches the network.
+#### `-d --description <DESCRIPTION>`
 
-## store root
+Replace the description
 
-```
-diataxis store root [<PATH>] [--force]
-```
+#### `-T --type <TYPE>`
 
-Without a path, prints the configured root set. With one, sets it. The
-directory must hold `diataxis.yml`. Changing a root that is already set
-needs `--force`.
+Retype the page
 
-This command resolves nothing and runs from any directory.
+#### `-t --tags <TAGS>`
 
-## docs
+Replace the tags
 
-```
-diataxis docs [<TOPIC>] [<QUERY>]
-diataxis docs --all
-```
+#### `-b --body <BODY>`
 
-| Form | Effect |
-|---|---|
-| `docs` | One line per bundled page. |
-| `docs list` | The same listing. |
-| `docs <topic>` | One page, by slug, title, or unique prefix. |
-| `docs search <query>` | The pages that hold the query. |
-| `docs --all` | Every page whole, in one stream. |
+Replace the body
 
-The pages are compiled into the binary, so `docs` works from any
-directory with no files present.
+## `diataxis page delete`
 
-## prime
+- **Usage:** `diataxis page delete <PAGE>`
 
-```
-diataxis prime
-```
+Remove a page
 
-Prints what diataxis is and how to use it, for an agent's context. It
-depends only on the binary, so it runs anywhere.
+### Arguments
+
+#### `<PAGE>`
+
+The page id, or a unique prefix of one
+
+## `diataxis page path`
+
+- **Usage:** `diataxis page path <PAGE>`
+
+Print the file path of a page, to open it in an editor
+
+### Arguments
+
+#### `<PAGE>`
+
+The page id, or a unique prefix of one
+
+## `diataxis map`
+
+- **Usage:** `diataxis map`
+
+Show the set as the four Diataxis quadrants
+
+Prints the quadrants in Diataxis order: tutorial, how-to, reference, explanation. Each names what it informs and what it serves, with its pages under it. A type with no pages prints `(none)`.
+
+## `diataxis compass`
+
+- **Usage:** `diataxis compass [PAGE]`
+
+Show the two questions that name a page's type
+
+Prints the two questions and the table that turns a pair of answers into one type. Given a page, it prints that page's declared type alongside.
+
+The compass does not classify a page: classification needs a reader. Without a page, it resolves no set and runs from any directory.
+
+### Arguments
+
+#### `[PAGE]`
+
+A page to name alongside the questions
+
+## `diataxis check`
+
+- **Usage:** `diataxis check`
+
+Check the pages for type faults and broken links
+
+Faults print first. A fault is provable from the files: a Markdown file in the pages directory that is not a page, a how-to title that does not state a goal, a `[[reference]]` that names no page, a relative `.md` link that names no file, and a declared set that did not load. Advice is a gap that is not wrong on its own: a type with no pages.
+
+Exits non-zero when a fault is found. A reference inside a code span or a code block is not a link. Nothing here judges prose.
+
+## `diataxis search`
+
+- **Usage:** `diataxis search <PATTERN>`
+
+Search the pages
+
+Matches a regular expression against every page body, without regard to case. Prints the page id, the line number, the type, and the line.
+
+### Arguments
+
+#### `<PATTERN>`
+
+A regular expression, matched without regard to case
+
+## `diataxis export`
+
+- **Usage:** `diataxis export <--out <OUT>> [--edit-base <EDIT_BASE>]`
+
+Write the pages as front-matter Markdown for a static site generator
+
+Each page becomes `OUT/<id>.md` with `---` front matter: `title`, `description`, `weight`, `params.diataxis_type`, and `editURL` when `--edit-base` is given. A `[[page]]` reference in prose becomes a relative `<id>.md` link; a reference in code stays as written. The leading H1 is dropped. Each type that has pages also gets `OUT/separator-<type>.md`, a sidebar group label.
+
+Fails on a page that does not parse, a reference that names no page, and a reference to another set.
+
+### Flags
+
+#### `--out <OUT>`
+
+The directory to write into. It is created if absent
+
+#### `--edit-base <EDIT_BASE>`
+
+The URL the page files sit under, for an "edit this page" link, such as https://github.com/acme/tool/edit/main/docs
+
+## `diataxis store`
+
+- **Usage:** `diataxis store <SUBCOMMAND>`
+
+Manage the declared documentation sets
+
+## `diataxis store list`
+
+- **Usage:** `diataxis store list`
+
+List the documentation sets this set reads
+
+One row per set in the closure: this set first, then each declared set under its alias, with its source and its page count. A remote set shows the time since its last fetch.
+
+## `diataxis store sync`
+
+- **Usage:** `diataxis store sync`
+
+Fetch the declared remote sets into the local cache
+
+Exits non-zero when a fetch fails. No other command reaches the network.
+
+## `diataxis store root`
+
+- **Usage:** `diataxis store root [--force] [PATH]`
+
+Show or set the root set that reads fall back to
+
+The directory must hold `diataxis.yml`. This command resolves no set and runs from any directory.
+
+### Arguments
+
+#### `[PATH]`
+
+The directory of the root set. Without it, print the current setting
+
+### Flags
+
+#### `--force`
+
+Replace an already-set root with a different one
+
+## `diataxis docs`
+
+- **Usage:** `diataxis docs [-a --all] [TOPIC] [QUERY]`
+
+Show the bundled documentation
+
+With no topic, or with `list`, prints one line per bundled page. A topic prints one page, by slug, title, or unique prefix. `search <query>` prints the pages that hold the query. `--all` prints every page whole, in one stream. The pages are compiled into the binary, so this works from any directory.
+
+### Arguments
+
+#### `[TOPIC]`
+
+Topic slug to show, or "search" to search the docs
+
+#### `[QUERY]`
+
+Search query (when topic is "search")
+
+### Flags
+
+#### `-a --all`
+
+Print every page whole, in one stream

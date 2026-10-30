@@ -16,3 +16,9 @@ assertions:
         grep -q 'tutorial how-to reference explanation'
   - name: "store list counts four pages"
     command: "diataxis store list | grep -q '4 page'"
+  - name: "export writes four pages and four separators, and the set is untouched"
+    command: |
+      out=$(mktemp -d) && diataxis export --out "$out" >/dev/null &&
+        test "$(ls "$out" | wc -l | tr -d ' ')" = 8 &&
+        grep -q '^  diataxis_type: how-to$' "$out/how-to-rotate-the-signing-key.md" &&
+        diataxis check | grep -q 'no problems found'

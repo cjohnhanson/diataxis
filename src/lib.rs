@@ -38,6 +38,8 @@ pub mod docs;
 #[cfg(feature = "store")]
 pub mod error;
 #[cfg(feature = "store")]
+pub mod export;
+#[cfg(feature = "store")]
 pub mod page;
 #[cfg(feature = "store")]
 pub mod repo;

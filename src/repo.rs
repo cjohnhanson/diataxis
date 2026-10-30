@@ -101,6 +101,17 @@ impl Repo {
     /// A file that does not parse is skipped and named on stderr. One
     /// broken page never hides the rest.
     pub fn list(&self) -> Result<Vec<Page>> {
+        self.read_all(false)
+    }
+
+    /// Every page in this set, in id order, or the first file that does
+    /// not parse. A consumer that publishes the set uses this: a page
+    /// skipped there is a page missing from the published site.
+    pub fn list_strict(&self) -> Result<Vec<Page>> {
+        self.read_all(true)
+    }
+
+    fn read_all(&self, strict: bool) -> Result<Vec<Page>> {
         let dir = self.docs_dir()?;
         let mut pages = Vec::new();
         let entries = match std::fs::read_dir(&dir) {
@@ -123,6 +134,7 @@ impl Repo {
             };
             match read_page(&path, stem) {
                 Ok(page) => pages.push(page),
+                Err(e) if strict => return Err(Error::General(format!("{path}: {e}"))),
                 Err(e) => eprintln!("diataxis: skipping {path}: {e}"),
             }
         }
