@@ -46,7 +46,7 @@ diataxis map                                    # the four quadrants
 diataxis compass [<page>]                       # the two questions that name a type
 diataxis check                                  # type faults and broken links
 diataxis search <pattern>                       # every matching line
-diataxis export --out <dir>                     # the pages as Hugo content
+diataxis export --out <new-dir>                 # the pages as front-matter Markdown for a site
 diataxis store list | sync | root               # this set and the sets it declares
 diataxis docs [topic]                           # the bundled documentation
 ```

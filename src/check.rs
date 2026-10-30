@@ -211,87 +211,64 @@ fn prose_targets(body: &str) -> (Vec<String>, Vec<String>) {
 pub struct ProseRef {
     /// From the first `[` to the last `]`.
     pub range: std::ops::Range<usize>,
-    /// What sits between the brackets: `id` or `alias:id`.
+    /// The page it names: `id`, or `alias:id` for a page in another set.
     pub target: String,
+    /// The text after a `|`, as written: `[[id|the text]]`.
+    pub text: Option<String>,
 }
 
 /// Every `[[reference]]` in a page's prose, in body order.
 ///
-/// `check` reports these and `export` rewrites these, from this one
-/// scan, so a set that passes the check exports and the two never name
-/// different targets for the same text.
+/// pulldown-cmark's wikilink extension reads them, the same grammar
+/// for `check`, for the closure `workspace` builds, and for `export`. A
+/// reference inside code is not one, and neither is an escaped
+/// `\[[x]]`.
 pub fn prose_refs(body: &str) -> Vec<ProseRef> {
     scan_prose(body).0
 }
 
 fn scan_prose(body: &str) -> (Vec<ProseRef>, Vec<String>) {
-    use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
+    use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
 
-    let mut runs: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut refs = Vec::new();
     let mut links = Vec::new();
-
-    // A text event carries no code: pulldown-cmark reports a code span
-    // and a code block as their own events, indented blocks included.
-    //
-    // Text is read in runs of adjacent text events, by their source
-    // bytes. `[[one]]` is not CommonMark, so the parser reads the inner
-    // `[one]` as a shortcut link reference and splits it into three
-    // events, which sit side by side in the source. Any other event ends
-    // a run, so emphasis inside brackets, `[[*one*]]`, is not a
-    // reference. A code block's content arrives as text, fenced and
-    // indented alike, so the block is tracked and its text dropped.
-    let mut in_code_block = false;
-    let mut current: Option<std::ops::Range<usize>> = None;
-    for (event, range) in Parser::new_ext(body, Options::empty()).into_offset_iter() {
-        match event {
-            Event::Text(_) if !in_code_block => {
-                current = match current.take() {
-                    Some(run) if run.end == range.start => Some(run.start..range.end),
-                    Some(run) => {
-                        runs.push(run);
-                        Some(range)
-                    }
-                    None => Some(range),
-                };
-                continue;
+    // A code span and a code block carry no link events, so a reference
+    // quoted as an example is never read as one.
+    for (event, range) in Parser::new_ext(body, Options::ENABLE_WIKILINKS).into_offset_iter() {
+        let Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            ..
+        }) = event
+        else {
+            continue;
+        };
+        match link_type {
+            LinkType::WikiLink { has_pothole } => {
+                let text = has_pothole
+                    .then(|| {
+                        body[range.clone()]
+                            .trim_start_matches("[[")
+                            .trim_end_matches("]]")
+                            .split_once('|')
+                            .map(|(_, text)| text.to_string())
+                    })
+                    .flatten();
+                refs.push(ProseRef {
+                    range,
+                    target: dest_url.to_string(),
+                    text,
+                });
             }
-            Event::Start(Tag::CodeBlock(_)) => in_code_block = true,
-            Event::End(TagEnd::CodeBlock) => in_code_block = false,
-            Event::Start(Tag::Link {
-                link_type,
-                dest_url,
-                ..
-            }) => {
-                // An autolink is a url by definition, and a shortcut
-                // link with no definition is prose rather than a link.
-                if !matches!(link_type, LinkType::Autolink | LinkType::Email)
-                    && let Some(target) = relative_page(&dest_url)
-                {
+            // An autolink is a url by definition.
+            LinkType::Autolink | LinkType::Email => {}
+            _ => {
+                if let Some(target) = relative_page(&dest_url) {
                     links.push(target);
                 }
             }
-            _ => {}
-        }
-        if let Some(run) = current.take() {
-            runs.push(run);
         }
     }
-    runs.extend(current);
-
-    let refs = runs
-        .into_iter()
-        .flat_map(|run| {
-            wiki_targets(&body[run.clone()])
-                .into_iter()
-                .map(move |(found, target)| ProseRef {
-                    range: run.start + found.start..run.start + found.end,
-                    target,
-                })
-        })
-        // The parser starts an escaped bracket's text after its
-        // backslash, so the escape is read from the body, not the run.
-        .filter(|r: &ProseRef| !body[..r.range.start].ends_with('\\'))
-        .collect();
     (refs, links)
 }
 
@@ -314,33 +291,6 @@ fn relative_page(dest: &str) -> Option<String> {
         return None;
     }
     Some(target.to_string())
-}
-
-/// Every `[[reference]]` in one run of source text, with its byte range
-/// in that run.
-///
-/// Not CommonMark, so pulldown-cmark passes it through as text and this
-/// reads it there, which is what keeps a reference inside code out. A
-/// `[[` whose first bracket is escaped, `\[[x]]`, is literal text.
-fn wiki_targets(run: &str) -> Vec<(std::ops::Range<usize>, String)> {
-    let mut targets = Vec::new();
-    let mut from = 0;
-    while let Some(found) = run[from..].find("[[") {
-        let open = from + found;
-        let Some(len) = run[open + 2..].find("]]") else {
-            break;
-        };
-        let target = &run[open + 2..open + 2 + len];
-        let close = open + 2 + len + 2;
-        let escaped = run[..open].ends_with('\\');
-        if escaped || target.is_empty() || target.contains(char::is_whitespace) {
-            from = open + 1;
-            continue;
-        }
-        targets.push((open..close, target.to_string()));
-        from = close;
-    }
-    targets
 }
 
 #[cfg(test)]
@@ -500,16 +450,15 @@ mod tests {
         assert!(findings.iter().all(|f| f.severity == Severity::Advice));
     }
 
+    fn names(body: &str) -> Vec<String> {
+        prose_refs(body).into_iter().map(|r| r.target).collect()
+    }
+
     #[test]
-    fn wiki_targets_ignores_an_unclosed_marker() {
-        let names =
-            |run: &str| -> Vec<String> { wiki_targets(run).into_iter().map(|(_, t)| t).collect() };
+    fn every_reference_in_prose_is_read_and_an_unclosed_one_is_not() {
         assert_eq!(names("see [[one]] and [[two]]"), ["one", "two"]);
-        assert_eq!(wiki_targets("see [[one]]")[0].0, 4..11);
-        assert_eq!(names("see [[open").len(), 0);
-        assert_eq!(names("[[two words]]").len(), 0);
-        // An unclosed or spaced opener does not hide a reference after it.
-        assert_eq!(names("[[a [[b]]"), ["b"]);
+        assert!(names("see [[open").is_empty());
+        assert_eq!(names("[[shared:onboarding]]"), ["shared:onboarding"]);
     }
 
     #[test]
@@ -518,8 +467,23 @@ mod tests {
     }
 
     #[test]
-    fn emphasis_inside_the_brackets_is_not_a_reference() {
-        assert!(prose_refs("See [[*install*]] here.").is_empty());
+    fn an_escaped_backslash_before_a_reference_leaves_it_a_reference() {
+        // `\\` is one literal backslash; the brackets after it still open
+        // a reference, so a broken one is still caught.
+        assert_eq!(names("A path \\\\[[install]] here."), ["install"]);
+    }
+
+    #[test]
+    fn a_link_definition_of_the_same_name_does_not_hide_a_reference() {
+        let body = "See [[install]] here.\n\n[install]: https://example.com\n";
+        assert_eq!(names(body), ["install"]);
+    }
+
+    #[test]
+    fn the_text_after_a_pipe_is_kept() {
+        let refs = prose_refs("See [[install|the install page]].");
+        assert_eq!(refs[0].target, "install");
+        assert_eq!(refs[0].text.as_deref(), Some("the install page"));
     }
 
     #[test]

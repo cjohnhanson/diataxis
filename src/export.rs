@@ -1,159 +1,88 @@
-//! Export a set as content for Hugo.
+//! Export a set as front-matter Markdown for a static site generator.
 //!
-//! Each page becomes one Markdown file with `---` front matter. A
-//! `[[page]]` reference in prose becomes a relative `page.md` link; the
-//! check's own scan decides what is a reference, so a set that passes
-//! `check` exports. A reference inside code is an example and stays as
-//! written. The leading H1 is dropped, because the generator renders
-//! the title from the front matter.
+//! Each page becomes one file with `---` front matter: `title`,
+//! `description`, `weight`, and `params.diataxis_type`. A `[[page]]`
+//! reference becomes a relative `page.md` link; a reference in code
+//! stays as written. The leading H1 is dropped, because the generator
+//! renders the title from the front matter.
 //!
-//! The sidebar groups pages by Diataxis type. A separator file per
-//! type that has pages carries the group label, in the form the Hextra
-//! theme's sidebar reads. A type with no pages gets no separator,
-//! because Diataxis builds no empty structure.
+//! Export decides nothing a site decides: how pages group in a sidebar,
+//! where an "edit this page" link points, which file names the
+//! generator reserves. The site's own configuration and templates own
+//! those.
 //!
-//! Every file is rendered before any is written, into a directory that
-//! is empty or absent. A site built from a partial set, or from a set
-//! with stale pages beside it, reads as complete, so either stops the
-//! export.
+//! `check` owns validity, and export runs it first. Export adds one
+//! refusal of its own: a reference to a page in another set, which a
+//! single-set export cannot turn into a link.
 
 use std::collections::HashMap;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::Serialize;
 
-use crate::check::prose_refs;
+use crate::check::{Severity, check, prose_refs};
 use crate::error::{Error, Result};
 use crate::page::{Kind, Page};
 use crate::repo::Repo;
 
-/// What `export` is given beyond the output directory.
-#[derive(Default)]
-pub struct ExportOptions<'a> {
-    /// The URL a page's source file sits under, for an "edit this page"
-    /// link: `https://github.com/acme/tool/edit/main/docs`. The page's
-    /// file name is joined to it.
-    pub edit_base: Option<&'a str>,
-}
-
-/// The most pages one type can hold. Each type takes a band of a
-/// thousand weights: one for its separator and the rest for pages.
-const GROUP_LIMIT: usize = 998;
-
-/// Page ids Hugo reads as a section or bundle index, not a page.
-const RESERVED_IDS: [&str; 2] = ["_index", "index"];
-
-/// Write every page of the set into `out`, and return the files written.
+/// Write every page of the set into `out`, a directory that must not
+/// exist yet, and return the files written.
 ///
-/// `out` must be empty or absent. Fails, writing nothing, on a page that
-/// does not parse, a reference that names no page, a reference to
-/// another set, and a page whose id is a separator file or a Hugo index.
-pub fn export(
-    repo: &Repo,
-    out: &Utf8Path,
-    options: &ExportOptions<'_>,
-) -> Result<Vec<Utf8PathBuf>> {
-    check_out(out)?;
-    if let Some(base) = options.edit_base
-        && !(base.starts_with("https://") || base.starts_with("http://"))
-    {
+/// Fails, leaving no directory behind, when `check` reports a fault, a
+/// page references a page in another set, `out` exists, or a write
+/// fails.
+pub fn export(repo: &Repo, root: &Utf8Path, out: &Utf8Path) -> Result<Vec<Utf8PathBuf>> {
+    if out.as_str().trim().is_empty() {
+        return Err(Error::General(
+            "--out takes a path for a new directory, not an empty value".to_string(),
+        ));
+    }
+    if out.exists() {
         return Err(Error::General(format!(
-            "--edit-base {base:?} is not an http(s) URL; give the URL the page files sit under, such as https://github.com/acme/tool/edit/main/docs"
+            "{out} already exists; export creates its own directory, so name a path that does not exist yet"
         )));
     }
-    let pages = repo.list_strict().map_err(|e| {
-        Error::General(format!(
-            "{e}; fix the page, and run `diataxis check` to list every fault"
-        ))
-    })?;
-    for page in &pages {
-        let separator = Kind::ALL.iter().any(|k| page.id == separator_id(*k));
-        if separator || RESERVED_IDS.contains(&page.id.as_str()) {
-            return Err(Error::General(format!(
-                "page {} has a name export uses for another file; rename the page with a new id",
-                page.id
-            )));
-        }
+    let faults = check(root)?
+        .into_iter()
+        .filter(|f| f.severity == Severity::Fault)
+        .count();
+    if faults > 0 {
+        return Err(Error::General(format!(
+            "`diataxis check` reports {faults} fault(s); export writes a set with none. Run `diataxis check` to see them"
+        )));
     }
+    let pages = repo.list_strict()?;
     let titles: HashMap<&str, &str> = pages.iter().map(|p| (p.id.as_str(), p.title())).collect();
 
-    let mut files: Vec<(Utf8PathBuf, String)> = Vec::new();
-    for (index, kind) in Kind::ALL.into_iter().enumerate() {
-        let mut group: Vec<&Page> = pages.iter().filter(|p| p.kind() == kind).collect();
-        if group.is_empty() {
-            continue;
-        }
-        if group.len() > GROUP_LIMIT {
-            return Err(Error::General(format!(
-                "{} {kind} pages; export orders at most {GROUP_LIMIT} pages of one type",
-                group.len()
-            )));
-        }
-        group.sort_by_key(|p| (p.title().to_lowercase(), p.id.clone()));
-        // Starting at 1, because Hugo reads a weight of zero as no
-        // weight at all. Both conversions are bounded by the checks above.
-        let base = 1000 * u32::try_from(index).expect("four types");
+    let mut ordered: Vec<&Page> = pages.iter().collect();
+    ordered.sort_by_key(|p| {
+        let kind = Kind::ALL.iter().position(|k| *k == p.kind());
+        (kind, p.title().to_lowercase(), p.id.clone())
+    });
+    let mut files = Vec::with_capacity(ordered.len());
+    for (position, page) in ordered.into_iter().enumerate() {
+        // From 1, because Hugo reads a weight of zero as no weight.
+        let weight = u32::try_from(position + 1)
+            .map_err(|_| Error::General("too many pages to order".to_string()))?;
         files.push((
-            out.join(format!("{}.md", separator_id(kind))),
-            render_separator(kind, base + 1)?,
+            format!("{}.md", page.id),
+            render_page(page, &titles, weight)?,
         ));
-        for (position, page) in group.into_iter().enumerate() {
-            let weight = base + 2 + u32::try_from(position).expect("bounded by GROUP_LIMIT");
-            files.push((
-                out.join(format!("{}.md", page.id)),
-                render_page(page, &titles, weight, options.edit_base)?,
-            ));
-        }
     }
 
-    std::fs::create_dir_all(out)
-        .map_err(|e| Error::General(format!("cannot create {out}: {e}")))?;
+    std::fs::create_dir(out).map_err(|e| Error::General(format!("cannot create {out}: {e}")))?;
     let mut written = Vec::with_capacity(files.len());
-    for (path, text) in files {
-        std::fs::write(&path, text)
-            .map_err(|e| Error::General(format!("cannot write {path}: {e}")))?;
+    for (name, text) in files {
+        let path = out.join(name);
+        if let Err(e) = std::fs::write(&path, text) {
+            // The directory is export's own, made above, so removing it
+            // leaves the path as it was.
+            let _ = std::fs::remove_dir_all(out);
+            return Err(Error::General(format!("cannot write {path}: {e}")));
+        }
         written.push(path);
     }
     Ok(written)
-}
-
-/// Refuse an output path export cannot own whole.
-fn check_out(out: &Utf8Path) -> Result<()> {
-    if out.as_str().trim().is_empty() {
-        return Err(Error::General(
-            "--out takes a directory, not an empty value".to_string(),
-        ));
-    }
-    match std::fs::read_dir(out) {
-        Ok(mut entries) => {
-            if entries.next().is_some() {
-                return Err(Error::General(format!(
-                    "{out} is not empty; export writes into an empty or absent directory, so no stale or hand-written file sits among the pages. Remove it or name a new one"
-                )));
-            }
-            Ok(())
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) if out.exists() => Err(Error::General(format!(
-            "{out} is not a directory ({e}); --out takes a directory"
-        ))),
-        Err(e) => Err(Error::General(format!("cannot read {out}: {e}"))),
-    }
-}
-
-/// The sidebar label for one type's group.
-#[must_use]
-pub fn group_label(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Tutorial => "Tutorials",
-        Kind::HowTo => "How-to guides",
-        Kind::Reference => "Reference",
-        Kind::Explanation => "Explanation",
-    }
-}
-
-fn separator_id(kind: Kind) -> String {
-    format!("separator-{}", kind.as_str())
 }
 
 #[derive(Serialize)]
@@ -163,8 +92,6 @@ struct PageFront<'a> {
     description: &'a str,
     weight: u32,
     params: PageParams,
-    #[serde(rename = "editURL", skip_serializing_if = "Option::is_none")]
-    edit_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -173,46 +100,8 @@ struct PageParams {
     diataxis_type: &'static str,
 }
 
-#[derive(Serialize)]
-struct SeparatorFront {
-    title: &'static str,
-    weight: u32,
-    sidebar: SeparatorSidebar,
-    build: SeparatorBuild,
-}
-
-#[derive(Serialize)]
-struct SeparatorSidebar {
-    separator: bool,
-}
-
-/// A separator is listed in the sidebar and never rendered as a page.
-#[derive(Serialize)]
-struct SeparatorBuild {
-    render: &'static str,
-    list: &'static str,
-}
-
-fn render_separator(kind: Kind, weight: u32) -> Result<String> {
-    let front = SeparatorFront {
-        title: group_label(kind),
-        weight,
-        sidebar: SeparatorSidebar { separator: true },
-        build: SeparatorBuild {
-            render: "never",
-            list: "always",
-        },
-    };
-    Ok(format!("---\n{}---\n", yaml_serde::to_string(&front)?))
-}
-
 /// One page as a front-matter Markdown file, ending in one newline.
-fn render_page(
-    page: &Page,
-    titles: &HashMap<&str, &str>,
-    weight: u32,
-    edit_base: Option<&str>,
-) -> Result<String> {
+fn render_page(page: &Page, titles: &HashMap<&str, &str>, weight: u32) -> Result<String> {
     let front = PageFront {
         title: page.title(),
         description: &page.frontmatter.description,
@@ -220,7 +109,6 @@ fn render_page(
         params: PageParams {
             diataxis_type: page.kind().as_str(),
         },
-        edit_url: edit_base.map(|base| format!("{}/{}.md", base.trim_end_matches('/'), page.id)),
     };
     let body = rewrite_body(&page.id, &page.body, titles)?;
     Ok(format!(
@@ -250,7 +138,7 @@ fn rewrite_body(id: &str, body: &str, titles: &HashMap<&str, &str>) -> Result<St
     let rest = &body[start..];
     let mut cursor = start + (rest.len() - rest.trim_start_matches(['\n', '\r']).len());
 
-    // Byte ranges from the check's scan, not a re-serialised document,
+    // Byte ranges from check's own scan, not a re-serialised document,
     // so every other byte of the page survives.
     let mut out = String::with_capacity(body.len());
     for reference in prose_refs(body) {
@@ -260,7 +148,7 @@ fn rewrite_body(id: &str, body: &str, titles: &HashMap<&str, &str>) -> Result<St
         let target = reference.target.as_str();
         if target.contains(':') {
             return Err(Error::General(format!(
-                "page {id}: [[{target}]] names a page in another set, and export resolves references inside one set only; link to the other site's page by its URL"
+                "page {id}: [[{target}]] names a page in another set, which a single-set export cannot link; write the other site's URL instead"
             )));
         }
         let Some(title) = titles.get(target) else {
@@ -268,8 +156,12 @@ fn rewrite_body(id: &str, body: &str, titles: &HashMap<&str, &str>) -> Result<St
                 "page {id}: [[{target}]] names no page; create the page or correct the reference"
             )));
         };
+        let text = match &reference.text {
+            Some(text) => text.clone(),
+            None => escape_link_text(title),
+        };
         out.push_str(&body[cursor..reference.range.start]);
-        out.push_str(&format!("[{}]({target}.md)", escape_link_text(title)));
+        out.push_str(&format!("[{text}]({target}.md)"));
         cursor = reference.range.end;
     }
     out.push_str(&body[cursor..]);
@@ -326,68 +218,40 @@ mod tests {
     }
 
     #[test]
-    fn brackets_in_a_title_are_escaped_in_the_link_text() {
-        let out = rewrite_body("a", "See [[why]].\n", &titles()).unwrap();
-        assert_eq!(out, "See [Why acme \\[queues\\]](why.md).\n");
+    fn a_reference_with_its_own_text_keeps_the_text() {
+        let out = rewrite_body("a", "See [[install|the install]].\n", &titles()).unwrap();
+        assert_eq!(out, "See [the install](install.md).\n");
     }
 
     #[test]
-    fn markup_and_a_trailing_backslash_in_a_title_are_escaped() {
-        let out = rewrite_body("a", "See [[marked]].\n", &titles()).unwrap();
-        assert_eq!(out, "See [Install \\*acme\\* \\\\](marked.md).\n");
-    }
-
-    #[test]
-    fn a_reference_in_a_code_span_stays_as_written() {
-        let body = "Write `[[install]]` in a body.\n";
-        assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
-    }
-
-    #[test]
-    fn a_reference_in_a_fenced_or_indented_block_stays_as_written() {
-        let body =
-            "before\n\n```\nsee [[install]]\n```\n\n    and [[install]]\n\nafter [[install]]\n";
-        let out = rewrite_body("a", body, &titles()).unwrap();
+    fn markup_in_a_title_is_escaped_in_the_link_text() {
+        let out = rewrite_body("a", "See [[why]] and [[marked]].\n", &titles()).unwrap();
         assert_eq!(
             out,
-            "before\n\n```\nsee [[install]]\n```\n\n    and [[install]]\n\nafter [Install acme](install.md)\n"
+            "See [Why acme \\[queues\\]](why.md) and [Install \\*acme\\* \\\\](marked.md).\n"
         );
     }
 
     #[test]
-    fn export_and_check_agree_on_what_is_a_reference() {
-        // Emphasis inside the brackets and an escaped bracket are not
-        // references to `check`, so export leaves them as written.
-        for body in ["See [[*install*]] here.\n", "Escaped \\[[install]] here.\n"] {
-            assert!(crate::check::prose_refs(body).is_empty(), "{body}");
-            assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
-        }
-    }
-
-    #[test]
-    fn a_reference_inside_html_stays_as_written() {
+    fn a_reference_in_code_or_escaped_stays_as_written() {
         for body in [
-            "A <span title=\"[[install]]\">tip</span> here.\n",
-            "<div>\nsee [[absent]]\n</div>\n",
+            "Write `[[install]]` in a body.\n",
+            "before\n\n```\nsee [[install]]\n```\n\n    and [[install]]\n",
+            "Escaped \\[[install]] here.\n",
         ] {
-            assert!(crate::check::prose_refs(body).is_empty(), "{body}");
             assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
         }
     }
 
     #[test]
-    fn an_empty_or_spaced_target_stays_as_written() {
-        let body = "Empty [[]] and spaced [[a b]] and [[ ]] stay.\n";
-        assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
-    }
-
-    #[test]
-    fn an_empty_description_writes_no_description_key() {
-        let mut p = page("install", Kind::HowTo, "How to install", "Body.\n");
-        p.frontmatter.description = String::new();
-        let out = render_page(&p, &titles(), 102, None).unwrap();
-        let yaml: yaml_serde::Value = yaml_serde::from_str(split_front(&out).0).unwrap();
-        assert!(yaml.get("description").is_none(), "{out}");
+    fn a_reference_in_the_dropped_h1_goes_with_it_and_later_ones_are_rewritten() {
+        // The H1 is dropped whole, so a reference in it leaves no text
+        // behind; `check` has already resolved it before export runs.
+        let body = "# Using [[absent]]\n\nSee [[install]].\n";
+        assert_eq!(
+            rewrite_body("a", body, &titles()).unwrap(),
+            "See [Install acme](install.md).\n"
+        );
     }
 
     #[test]
@@ -401,6 +265,7 @@ mod tests {
     fn a_reference_to_another_set_is_an_error() {
         let err = rewrite_body("a", "See [[tisket:workflow]].\n", &titles()).unwrap_err();
         assert!(err.to_string().contains("[[tisket:workflow]]"), "{err}");
+        assert!(err.to_string().contains("URL"), "{err}");
     }
 
     #[test]
@@ -410,67 +275,39 @@ mod tests {
             rewrite_body("a", body, &titles()).unwrap(),
             "Text.\n\n# Another\n"
         );
-    }
-
-    #[test]
-    fn a_body_that_opens_with_prose_keeps_it() {
         let body = "Text first.\n\n# Heading\n";
         assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
     }
 
     #[test]
-    fn a_relative_md_link_is_left_for_the_generator() {
-        let body = "See [install](install.md).\n";
-        assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
-    }
-
-    #[test]
-    fn front_matter_carries_title_description_weight_type_and_edit_url() {
+    fn front_matter_carries_title_description_weight_and_type_only() {
         let p = page(
             "install",
             Kind::HowTo,
             "How to install: \"acme\"",
             "# How to install\n\nBody.",
         );
-        let out = render_page(
-            &p,
-            &titles(),
-            102,
-            Some("https://example.com/edit/main/docs/"),
-        )
-        .unwrap();
+        let out = render_page(&p, &titles(), 3).unwrap();
         let (front, body) = split_front(&out);
         let yaml: yaml_serde::Value = yaml_serde::from_str(front).unwrap();
         assert_eq!(yaml["title"].as_str(), Some("How to install: \"acme\""));
         assert_eq!(yaml["description"].as_str(), Some("One line."));
-        assert_eq!(yaml["weight"].as_u64(), Some(102));
+        assert_eq!(yaml["weight"].as_u64(), Some(3));
         assert_eq!(yaml["params"]["diataxis_type"].as_str(), Some("how-to"));
-        assert_eq!(
-            yaml["editURL"].as_str(),
-            Some("https://example.com/edit/main/docs/install.md")
-        );
-        // Hugo reserves `type` for the layout, so the Diataxis type
-        // never sits at the top level.
+        // Hugo reserves `type` for the layout, and an edit link is the
+        // site's to configure.
         assert!(yaml.get("type").is_none());
-        // A body with no final newline gets one.
+        assert!(yaml.get("editURL").is_none());
         assert_eq!(body, "Body.\n");
     }
 
     #[test]
-    fn no_edit_base_writes_no_edit_url() {
-        let p = page("install", Kind::HowTo, "How to install", "Body.\n");
-        let out = render_page(&p, &titles(), 102, None).unwrap();
+    fn an_empty_description_writes_no_description_key() {
+        let mut p = page("install", Kind::HowTo, "How to install", "Body.\n");
+        p.frontmatter.description = String::new();
+        let out = render_page(&p, &titles(), 1).unwrap();
         let yaml: yaml_serde::Value = yaml_serde::from_str(split_front(&out).0).unwrap();
-        assert!(yaml.get("editURL").is_none());
-    }
-
-    #[test]
-    fn group_labels_name_the_four_types() {
-        let labels: Vec<_> = Kind::ALL.iter().map(|k| group_label(*k)).collect();
-        assert_eq!(
-            labels,
-            ["Tutorials", "How-to guides", "Reference", "Explanation"]
-        );
+        assert!(yaml.get("description").is_none(), "{out}");
     }
 
     fn split_front(text: &str) -> (&str, &str) {
@@ -497,8 +334,8 @@ mod tests {
             std::fs::write(self.0.join("docs").join(format!("{id}.md")), text).expect("page");
         }
 
-        fn repo(&self) -> Repo {
-            Repo::open(&self.0).expect("open")
+        fn export(&self, out: &Utf8Path) -> Result<Vec<Utf8PathBuf>> {
+            export(&Repo::open(&self.0).expect("open"), &self.0, out)
         }
     }
 
@@ -515,13 +352,14 @@ mod tests {
     }
 
     #[test]
-    fn export_writes_pages_and_a_separator_per_type_present() {
+    fn export_writes_one_file_per_page_in_diataxis_then_title_order() {
         let s = Scratch::new("set");
         s.page("zeta-start", &meta("Zeta start", "tutorial"));
         s.page("alpha-start", &meta("Alpha start", "tutorial"));
         s.page("flags", &meta("Flags", "reference"));
+        s.page("how-to-run", &meta("How to run it", "guide"));
         let out = s.0.join("out");
-        let mut written = export(&s.repo(), &out, &ExportOptions::default()).unwrap();
+        let mut written = s.export(&out).unwrap();
         written.sort();
         let names: Vec<_> = written.iter().filter_map(|p| p.file_name()).collect();
         assert_eq!(
@@ -529,8 +367,7 @@ mod tests {
             [
                 "alpha-start.md",
                 "flags.md",
-                "separator-reference.md",
-                "separator-tutorial.md",
+                "how-to-run.md",
                 "zeta-start.md"
             ]
         );
@@ -539,86 +376,71 @@ mod tests {
             let yaml: yaml_serde::Value = yaml_serde::from_str(split_front(&text).0).unwrap();
             yaml["weight"].as_u64().unwrap()
         };
-        // Types read in Diataxis order, the separator heads its group,
-        // and pages inside a group sort by title. No weight is zero,
-        // because Hugo reads zero as unweighted.
-        assert!(weight("separator-tutorial") >= 1);
-        assert!(weight("separator-tutorial") < weight("alpha-start"));
-        assert!(weight("alpha-start") < weight("zeta-start"));
-        assert!(weight("zeta-start") < weight("separator-reference"));
-        assert!(weight("separator-reference") < weight("flags"));
-
-        let sep = std::fs::read_to_string(out.join("separator-tutorial.md")).unwrap();
-        let yaml: yaml_serde::Value = yaml_serde::from_str(split_front(&sep).0).unwrap();
-        assert_eq!(yaml["title"].as_str(), Some("Tutorials"));
-        assert_eq!(yaml["sidebar"]["separator"].as_bool(), Some(true));
-        assert_eq!(yaml["build"]["render"].as_str(), Some("never"));
-        assert_eq!(yaml["build"]["list"].as_str(), Some("always"));
+        // Tutorials, then how-to guides, then reference; by title inside
+        // a type; from 1, because Hugo reads zero as no weight.
+        assert_eq!(weight("alpha-start"), 1);
+        assert_eq!(weight("zeta-start"), 2);
+        assert_eq!(weight("how-to-run"), 3);
+        assert_eq!(weight("flags"), 4);
     }
 
     #[test]
-    fn export_reads_both_metadata_forms_and_the_guide_alias() {
+    fn titles_order_without_regard_to_case() {
+        let s = Scratch::new("case");
+        s.page("b", &meta("beta", "tutorial"));
+        s.page("a", &meta("Alpha", "tutorial"));
+        s.page("c", &meta("Gamma", "tutorial"));
+        let out = s.0.join("out");
+        s.export(&out).unwrap();
+        let weight = |id: &str| {
+            let text = std::fs::read_to_string(out.join(format!("{id}.md"))).unwrap();
+            let yaml: yaml_serde::Value = yaml_serde::from_str(split_front(&text).0).unwrap();
+            yaml["weight"].as_u64().unwrap()
+        };
+        assert_eq!((weight("a"), weight("b"), weight("c")), (1, 2, 3));
+    }
+
+    #[test]
+    fn export_reads_the_yaml_metadata_form_too() {
         let s = Scratch::new("forms");
-        s.page("old", &meta("How to run it", "guide"));
         s.page(
             "new",
             "---\ntitle: New\ndescription: d\ntype: explanation\n---\n\nBody.\n",
         );
         let out = s.0.join("out");
-        export(&s.repo(), &out, &ExportOptions::default()).unwrap();
-        let old = std::fs::read_to_string(out.join("old.md")).unwrap();
-        assert!(old.contains("diataxis_type: how-to"), "{old}");
-        assert!(out.join("new.md").exists());
+        s.export(&out).unwrap();
+        let text = std::fs::read_to_string(out.join("new.md")).unwrap();
+        assert!(text.contains("diataxis_type: explanation"), "{text}");
     }
 
     #[test]
-    fn export_fails_on_a_page_that_does_not_parse() {
-        // `list` skips a broken page with a note on stderr. A site built
-        // that way silently loses the page, so export refuses instead.
-        let s = Scratch::new("broken");
+    fn a_set_with_a_check_fault_is_refused_and_nothing_is_created() {
+        let s = Scratch::new("fault");
         s.page("good", &meta("Good", "tutorial"));
         s.page(
             "bad",
-            "<!-- metadata\ntitle: Bad\ntype: overview\n-->\n\nBody.\n",
-        );
-        let err = export(&s.repo(), &s.0.join("out"), &ExportOptions::default()).unwrap_err();
-        assert!(err.to_string().contains("bad"), "{err}");
-        assert!(err.to_string().contains("diataxis check"), "{err}");
-    }
-
-    #[test]
-    fn export_refuses_a_page_whose_name_is_a_separator_file_or_a_hugo_index() {
-        for id in ["separator-tutorial", "_index", "index"] {
-            let s = Scratch::new(&format!("collide{id}"));
-            s.page(id, &meta("Clash", "tutorial"));
-            let err = export(&s.repo(), &s.0.join("out"), &ExportOptions::default()).unwrap_err();
-            assert!(err.to_string().contains(id), "{err}");
-        }
-    }
-
-    #[test]
-    fn a_failure_on_a_later_page_writes_nothing() {
-        let s = Scratch::new("partial");
-        s.page("first", &meta("First", "tutorial"));
-        s.page(
-            "second",
-            "<!-- metadata\ntitle: Second\ntype: reference\n-->\n\nSee [[absent]].\n",
+            "<!-- metadata\ntitle: Bad\ntype: reference\n-->\n\nSee [[absent]].\n",
         );
         let out = s.0.join("out");
-        export(&s.repo(), &out, &ExportOptions::default()).unwrap_err();
-        assert!(!out.exists(), "a failed export left {out}");
+        let err = s.export(&out).unwrap_err();
+        assert!(err.to_string().contains("diataxis check"), "{err}");
+        assert!(!out.exists(), "a refused export created {out}");
     }
 
     #[test]
-    fn export_refuses_a_directory_that_holds_files_and_leaves_it_alone() {
+    fn an_existing_path_is_refused_and_left_alone() {
         // The pages directory is the dangerous case: exporting into it
         // would overwrite each source page with its exported form.
-        let s = Scratch::new("nonempty");
+        let s = Scratch::new("exists");
         s.page("first", &meta("First", "tutorial"));
         let docs = s.0.join("docs");
         let before = std::fs::read_to_string(docs.join("first.md")).unwrap();
-        let err = export(&s.repo(), &docs, &ExportOptions::default()).unwrap_err();
-        assert!(err.to_string().contains("is not empty"), "{err}");
+        for out in [docs.clone(), s.0.clone(), s.0.join("empty")] {
+            std::fs::create_dir_all(s.0.join("empty")).unwrap();
+            let err = s.export(&out).unwrap_err();
+            assert!(err.to_string().contains("already exists"), "{err}");
+            assert!(!err.to_string().contains("emove"), "{err}");
+        }
         assert_eq!(
             std::fs::read_to_string(docs.join("first.md")).unwrap(),
             before
@@ -626,38 +448,23 @@ mod tests {
     }
 
     #[test]
-    fn export_writes_into_an_empty_directory() {
-        let s = Scratch::new("emptydir");
+    fn an_empty_out_is_refused() {
+        let s = Scratch::new("emptyout");
         s.page("first", &meta("First", "tutorial"));
-        let out = s.0.join("out");
-        std::fs::create_dir_all(&out).unwrap();
-        export(&s.repo(), &out, &ExportOptions::default()).unwrap();
-        assert!(out.join("first.md").exists());
-    }
-
-    #[test]
-    fn an_out_that_is_a_file_or_empty_is_refused_with_its_name() {
-        let s = Scratch::new("outfile");
-        s.page("first", &meta("First", "tutorial"));
-        let file = s.0.join("afile");
-        std::fs::write(&file, "x").unwrap();
-        let err = export(&s.repo(), &file, &ExportOptions::default()).unwrap_err();
-        assert!(err.to_string().contains(file.as_str()), "{err}");
-        assert!(err.to_string().contains("not a directory"), "{err}");
-        let err = export(&s.repo(), Utf8Path::new(""), &ExportOptions::default()).unwrap_err();
+        let err = s.export(Utf8Path::new("")).unwrap_err();
         assert!(err.to_string().contains("empty"), "{err}");
     }
 
     #[test]
-    fn an_edit_base_that_is_not_a_url_is_refused() {
-        let s = Scratch::new("editbase");
-        s.page("first", &meta("First", "tutorial"));
-        for base in ["", "not a url"] {
-            let options = ExportOptions {
-                edit_base: Some(base),
-            };
-            let err = export(&s.repo(), &s.0.join("out"), &options).unwrap_err();
-            assert!(err.to_string().contains("--edit-base"), "{err}");
-        }
+    fn a_cross_set_reference_is_refused_and_nothing_is_created() {
+        let s = Scratch::new("crossset");
+        s.page(
+            "first",
+            "<!-- metadata\ntitle: First\ntype: tutorial\n-->\n\nSee [[shared:onboarding]].\n",
+        );
+        let out = s.0.join("out");
+        let err = s.export(&out).unwrap_err();
+        assert!(err.to_string().contains("[[shared:onboarding]]"), "{err}");
+        assert!(!out.exists());
     }
 }

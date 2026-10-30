@@ -4,51 +4,52 @@
 
 ### Added
 
-- `diataxis export --out <DIR> [--edit-base <URL>]` writes every page as
-  Hugo content in `<DIR>/<id>.md`. Its `---` front matter contains
-  `title`, `description`, `weight`, and `params.diataxis_type`.
+- `diataxis export --out <DIR>` writes every page of the set as
+  front-matter Markdown for a static site generator such as Hugo.
+  Each `<DIR>/<id>.md` file has `---` front matter with `title`,
+  `description`, `weight`, and `params.diataxis_type`.
   Export omits `description` when empty. The type sits under `params`
-  because Hugo reserves `type` for choosing a layout. `--edit-base`
-  adds `editURL` by joining the page's file name to the given URL.
-  It accepts only an HTTP or HTTPS URL and refuses any other value.
+  because Hugo reserves `type` for choosing a layout.
 
-- Export turns `[[page]]` references in prose into
-  `[<target title>](<id>.md)`, with markup characters in the title
-  escaped. References inside code or HTML, with an escaped opening
-  bracket, or with emphasis inside the brackets stay as written.
+- `weight` orders pages by type: tutorials, then how-to guides, then
+  reference, then explanation. Pages within a type sort by title,
+  without regard to case. Weights start at 1.
+
+- Export turns `[[page]]` into `[<target title>](<id>.md)`, with markup
+  characters in the title escaped. `[[page|text]]` keeps its text.
   Export drops the leading H1 because the site renders the title
   from front matter.
 
-- Each type with pages gets `<DIR>/separator-<type>.md`, a sidebar
-  group label in the form the Hextra theme reads. The labels are
-  "Tutorials", "How-to guides", "Reference", and "Explanation".
-  These files are listed but never rendered. Weights put types in
-  Diataxis order, each separator first, and pages in title order.
-  No weight is zero.
+- Export runs `check` first and refuses a set with a fault. It also
+  refuses references to pages in another set, such as `[[alias:page]]`.
+  A single-set export cannot turn these references into links.
 
-- `<DIR>` must be empty or absent. A stale or hand-written file never
-  sits among the exported pages. Export refuses the pages directory
-  as `<DIR>` and changes nothing. Export renders every file before
-  it writes one, so a fault leaves `<DIR>` as it was.
-  Export rejects a page that does not parse, a reference that names
-  no page, or a reference to another set. It also rejects a page
-  whose id is a separator file name, `_index`, or `index`.
-  Each error names the page or path and the fix.
+- `<DIR>` must not exist. Export creates it and removes it again if
+  a write fails, so a failed export leaves nothing behind.
+  Export never writes into an existing directory such as the pages
+  directory.
+
+- Export leaves sidebar grouping, edit links, and the generator's
+  reserved file names to the site's own configuration.
 
 - `Repo::list_strict` returns an error on the first page that does
   not parse, where `list` skips it. `check::prose_refs` returns each
-  prose reference with its byte range.
+  prose reference with its byte range and optional text.
 
 ### Changed
 
-- `check` reads references with the same scan as `export`. Both read
-  the same text the same way, so a set that passes `check` exports.
-  An escaped `\[[x]]` and `[[*x*]]` are no longer reported as
-  references.
+- References use pulldown-cmark's wikilink extension, with one grammar
+  for `check`, the closure of declared sets, and `export`.
+  pulldown-cmark is now at least 0.13.6. `[[two words]]` is now a
+  reference, and `check` reports it when it names no page.
+  `[[page|text]]` is read with its text. An escaped `\[[x]]` stays
+  literal text. A reference next to a `[x]: url` definition of the
+  same name is still a reference.
 
 - `docs/cli-reference.md` is generated from the clap definition with
-  `usage-lib`. A test fails when the committed page differs from
-  what the definition renders.
+  `usage-lib`. Each usage line comes from clap, so the page and
+  `--help` show the same usage. A test fails when the committed page
+  differs from what the definition renders.
   `UPDATE_CLI_REFERENCE=1 cargo test --test cli_reference` rewrites
   the page. `usage-lib` is a test-only dev-dependency; consumers
   never compile it. The test suite needs Rust 1.91.

@@ -149,15 +149,22 @@ pub enum Command {
 
     /// Check the pages for type faults and broken links
     ///
-    /// Faults print first. A fault is provable from the files: a
-    /// Markdown file in the pages directory that is not a page, a how-to
-    /// title that does not state a goal, a `[[reference]]` that names no
-    /// page, a relative `.md` link that names no file, and a declared
-    /// set that did not load. Advice is a gap that is not wrong on its
-    /// own: a type with no pages.
+    /// Faults print first. A fault is provable from the files:
     ///
-    /// Exits non-zero when a fault is found. A reference inside a code
-    /// span or a code block is not a link. Nothing here judges prose.
+    /// A Markdown file in the pages directory that is not a page.
+    ///
+    /// A how-to title that does not state a goal.
+    ///
+    /// A `[[reference]]` that names no page in this set.
+    ///
+    /// A relative `.md` link that names no file.
+    ///
+    /// A declared set that did not load.
+    ///
+    /// Advice is a gap that is not wrong on its own: a type with no
+    /// pages. Exits non-zero when a fault is found. A reference inside
+    /// code, or escaped as `\[[x]]`, is literal text. Nothing here
+    /// judges prose.
     Check,
 
     /// Search the pages
@@ -167,20 +174,16 @@ pub enum Command {
     /// and the line.
     Search(SearchArgs),
 
-    /// Write the pages as Hugo content, for a docs site
+    /// Write the pages as front-matter Markdown for a site generator
     ///
     /// Each page becomes `OUT/<id>.md` with `---` front matter: `title`,
-    /// `description`, `weight`, `params.diataxis_type`, and `editURL`
-    /// when `--edit-base` is given. A `[[page]]` reference in prose
-    /// becomes a relative `<id>.md` link; a reference in code stays as
-    /// written. The leading H1 is dropped. Each type that has pages also
-    /// gets `OUT/separator-<type>.md`, a sidebar group label in the form
-    /// the Hextra theme reads.
+    /// `description`, `weight`, and `params.diataxis_type`. The weight
+    /// orders pages by type, then by title. A `[[page]]` reference
+    /// becomes a relative `<id>.md` link. The leading H1 is dropped.
     ///
-    /// `OUT` must be empty or absent. Export writes nothing when it fails:
-    /// on a page that does not parse, a reference that names no page, a
-    /// reference to another set, and a page whose id is a separator file
-    /// name, `_index`, or `index`.
+    /// Export runs `check` first and refuses a set with a fault. It also
+    /// refuses a reference to a page in another set. `OUT` must not
+    /// exist: export creates it, and removes it again if a write fails.
     Export(ExportArgs),
 
     /// Manage the declared documentation sets
@@ -348,14 +351,9 @@ pub struct SearchArgs {
 
 #[derive(clap::Args)]
 pub struct ExportArgs {
-    /// The directory to write into: empty, or absent and then created
+    /// The directory to create and write into; it must not exist yet
     #[arg(long)]
     pub out: Utf8PathBuf,
-
-    /// The http(s) URL the page files sit under, for an "edit this page"
-    /// link, such as https://github.com/acme/tool/edit/main/docs
-    #[arg(long)]
-    pub edit_base: Option<String>,
 }
 
 pub use crate::docs::DocsArgs;
@@ -506,11 +504,8 @@ pub fn run_command(root: &Utf8Path, command: Command) -> Result<()> {
 
 fn run_export(root: &Utf8Path, args: &ExportArgs) -> Result<()> {
     let repo = Repo::open(root)?;
-    let options = crate::export::ExportOptions {
-        edit_base: args.edit_base.as_deref(),
-    };
-    let written = crate::export::export(&repo, &args.out, &options)?;
-    println!("exported {} file(s) to {}", written.len(), args.out);
+    let written = crate::export::export(&repo, root, &args.out)?;
+    println!("exported {} page(s) to {}", written.len(), args.out);
     Ok(())
 }
 
