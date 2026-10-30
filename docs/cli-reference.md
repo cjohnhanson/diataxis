@@ -10,6 +10,9 @@ type: reference
 
 Diataxis documentation sets as typed markdown
 
+Every command takes `-h` or `--help`. `-V` and `--version` work at the
+top level only, as `diataxis --version`; a subcommand refuses them.
+
 
 - **Usage:** `diataxis [--root <ROOT>] [--home] <SUBCOMMAND>`
 
@@ -19,13 +22,13 @@ Diataxis documentation sets as typed markdown
 
 Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
 
-An empty value is refused. It read as a relative path, joined to nothing, and acted on the working directory instead, so an unset variable wrote to whichever set the shell happened to stand in.
+An empty value is refused.
 
 ### `--home`
 
-Act on the configured root store, wherever the command runs.
+Act on the configured root set, wherever the command runs.
 
-Without `--root` or `--home`, a command uses the nearest `diataxis.yml` at or above the working directory. With none, a read falls back to the configured root set and names it on stderr.
+Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
 
 ## `diataxis init`
 
@@ -229,21 +232,21 @@ A regular expression, matched without regard to case
 
 - **Usage:** `diataxis export <--out <OUT>> [--edit-base <EDIT_BASE>]`
 
-Write the pages as front-matter Markdown for a static site generator
+Write the pages as Hugo content, for a docs site
 
-Each page becomes `OUT/<id>.md` with `---` front matter: `title`, `description`, `weight`, `params.diataxis_type`, and `editURL` when `--edit-base` is given. A `[[page]]` reference in prose becomes a relative `<id>.md` link; a reference in code stays as written. The leading H1 is dropped. Each type that has pages also gets `OUT/separator-<type>.md`, a sidebar group label.
+Each page becomes `OUT/<id>.md` with `---` front matter: `title`, `description`, `weight`, `params.diataxis_type`, and `editURL` when `--edit-base` is given. A `[[page]]` reference in prose becomes a relative `<id>.md` link; a reference in code stays as written. The leading H1 is dropped. Each type that has pages also gets `OUT/separator-<type>.md`, a sidebar group label in the form the Hextra theme reads.
 
-Fails on a page that does not parse, a reference that names no page, and a reference to another set.
+`OUT` must be empty or absent. Export writes nothing when it fails: on a page that does not parse, a reference that names no page, a reference to another set, and a page whose id is a separator file name, `_index`, or `index`.
 
 ### Flags
 
 #### `--out <OUT>`
 
-The directory to write into. It is created if absent
+The directory to write into: empty, or absent and then created
 
 #### `--edit-base <EDIT_BASE>`
 
-The URL the page files sit under, for an "edit this page" link, such as https://github.com/acme/tool/edit/main/docs
+The http(s) URL the page files sit under, for an "edit this page" link, such as https://github.com/acme/tool/edit/main/docs
 
 ## `diataxis store`
 

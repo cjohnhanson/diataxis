@@ -16,9 +16,23 @@ assertions:
         grep -q 'tutorial how-to reference explanation'
   - name: "store list counts four pages"
     command: "diataxis store list | grep -q '4 page'"
-  - name: "export writes four pages and four separators, and the set is untouched"
+  - name: "export writes four pages and four separators, and the pages are byte for byte as before"
     command: |
-      out=$(mktemp -d) && diataxis export --out "$out" >/dev/null &&
-        test "$(ls "$out" | wc -l | tr -d ' ')" = 8 &&
-        grep -q '^  diataxis_type: how-to$' "$out/how-to-rotate-the-signing-key.md" &&
-        diataxis check | grep -q 'no problems found'
+      tmp=$(mktemp -d) && trap 'rm -rf "$tmp"' EXIT &&
+        cksum docs/*.md > "$tmp/before" &&
+        diataxis export --out "$tmp/out" >/dev/null &&
+        test "$(ls "$tmp/out" | wc -l | tr -d ' ')" = 8 &&
+        grep -q '^  diataxis_type: how-to$' "$tmp/out/how-to-rotate-the-signing-key.md" &&
+        cksum docs/*.md | cmp -s - "$tmp/before"
+  - name: "export --edit-base writes an editURL on each page"
+    command: |
+      tmp=$(mktemp -d) && trap 'rm -rf "$tmp"' EXIT &&
+        diataxis export --out "$tmp/out" --edit-base https://example.com/edit/main/docs >/dev/null &&
+        grep -qx 'editURL: https://example.com/edit/main/docs/why-acme-queues.md' "$tmp/out/why-acme-queues.md"
+  - name: "export refuses the pages directory and changes nothing in it"
+    command: |
+      tmp=$(mktemp -d) && trap 'rm -rf "$tmp"' EXIT &&
+        cksum docs/*.md > "$tmp/before" &&
+        ! diataxis export --out docs 2>"$tmp/err" &&
+        grep -q 'is not empty' "$tmp/err" &&
+        cksum docs/*.md | cmp -s - "$tmp/before"

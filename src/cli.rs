@@ -19,25 +19,37 @@ use crate::repo::{CreatePageOptions, EditPageOptions, Repo};
 /// from this one place, so the two cannot drift.
 pub const ABOUT: &str = "Diataxis documentation sets as typed markdown";
 
+/// The long description, which `--help` and the generated reference
+/// print. It carries the facts clap's built-in flags cannot.
+const LONG_ABOUT: &str = "Diataxis documentation sets as typed markdown
+
+Every command takes `-h` or `--help`. `-V` and `--version` work at the
+top level only, as `diataxis --version`; a subcommand refuses them.";
+
 #[derive(Parser)]
-#[command(name = "diataxis", version, about = ABOUT, max_term_width = 98)]
+#[command(
+    name = "diataxis",
+    version,
+    about = ABOUT,
+    long_about = LONG_ABOUT,
+    max_term_width = 98
+)]
 pub struct Args {
     /// Documentation set directory. Literal: the directory must hold
     /// diataxis.yml; no walk, no fallback. Without it, the nearest
     /// diataxis.yml at or above the cwd is used.
     ///
-    /// An empty value is refused. It read as a relative path, joined to
-    /// nothing, and acted on the working directory instead, so an unset
-    /// variable wrote to whichever set the shell happened to stand in.
+    /// An empty value is refused.
+    // An empty value read as a relative path, joined to nothing, and
+    // acted on the working directory, so an unset variable wrote to
+    // whichever set the shell stood in.
     #[arg(long, global = true, value_parser = non_empty_root)]
     pub root: Option<Utf8PathBuf>,
 
-    /// Act on the configured root store, wherever the command runs.
+    /// Act on the configured root set, wherever the command runs.
     ///
-    /// Without `--root` or `--home`, a command uses the nearest
-    /// `diataxis.yml` at or above the working directory. With none, a
-    /// read falls back to the configured root set and names it on
-    /// stderr.
+    /// Conflicts with `--root`. Without either, a read outside any set
+    /// falls back to the configured root set and names it on stderr.
     #[arg(long, global = true, conflicts_with = "root")]
     pub home: bool,
 
@@ -155,17 +167,20 @@ pub enum Command {
     /// and the line.
     Search(SearchArgs),
 
-    /// Write the pages as front-matter Markdown for a static site generator
+    /// Write the pages as Hugo content, for a docs site
     ///
     /// Each page becomes `OUT/<id>.md` with `---` front matter: `title`,
     /// `description`, `weight`, `params.diataxis_type`, and `editURL`
     /// when `--edit-base` is given. A `[[page]]` reference in prose
     /// becomes a relative `<id>.md` link; a reference in code stays as
     /// written. The leading H1 is dropped. Each type that has pages also
-    /// gets `OUT/separator-<type>.md`, a sidebar group label.
+    /// gets `OUT/separator-<type>.md`, a sidebar group label in the form
+    /// the Hextra theme reads.
     ///
-    /// Fails on a page that does not parse, a reference that names no
-    /// page, and a reference to another set.
+    /// `OUT` must be empty or absent. Export writes nothing when it fails:
+    /// on a page that does not parse, a reference that names no page, a
+    /// reference to another set, and a page whose id is a separator file
+    /// name, `_index`, or `index`.
     Export(ExportArgs),
 
     /// Manage the declared documentation sets
@@ -333,12 +348,12 @@ pub struct SearchArgs {
 
 #[derive(clap::Args)]
 pub struct ExportArgs {
-    /// The directory to write into. It is created if absent.
+    /// The directory to write into: empty, or absent and then created
     #[arg(long)]
     pub out: Utf8PathBuf,
 
-    /// The URL the page files sit under, for an "edit this page" link,
-    /// such as https://github.com/acme/tool/edit/main/docs
+    /// The http(s) URL the page files sit under, for an "edit this page"
+    /// link, such as https://github.com/acme/tool/edit/main/docs
     #[arg(long)]
     pub edit_base: Option<String>,
 }
