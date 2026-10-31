@@ -45,10 +45,10 @@ dependencies of its own:
 
 ```toml
 [build-dependencies]
-diataxis = { version = "0.1", default-features = false, features = ["build"] }
+diataxis = { version = "0.2", default-features = false, features = ["build"] }
 
 [dependencies]
-diataxis = { version = "0.1", default-features = false, features = ["store"] }
+diataxis = { version = "0.2", default-features = false, features = ["store"] }
 ```
 
 Add `build.rs`:

@@ -201,50 +201,85 @@ fn broken_links(repo: &Repo, pages: &[Page]) -> Result<Vec<Finding>> {
 /// because the raw span did not end in `.md`. A CommonMark parser
 /// answers all three, and this crate is not the place to write one.
 fn prose_targets(body: &str) -> (Vec<String>, Vec<String>) {
-    use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
+    let (refs, links) = scan_prose(body);
+    (refs.into_iter().map(|r| r.target).collect(), links)
+}
 
-    let mut prose = String::with_capacity(body.len());
+/// One `[[reference]]` in a page's prose, with the bytes it spans in
+/// the body, so a caller can replace it and leave every other byte.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProseRef {
+    /// From the first `[` to the last `]`.
+    pub range: std::ops::Range<usize>,
+    /// The page it names: `id`, or `alias:id` for a page in another set.
+    pub target: String,
+    /// The text after a `|`, as written: `[[id|the text]]`.
+    pub text: Option<String>,
+    /// Written as an embed, `![[id]]`, rather than a link.
+    pub embed: bool,
+}
+
+/// Every `[[reference]]` in a page's prose, in body order.
+///
+/// pulldown-cmark's wikilink extension reads them, the same grammar
+/// for `check`, for the closure `workspace` builds, and for `export`. A
+/// reference inside code is not one, and neither is an escaped
+/// `\[[x]]`.
+pub fn prose_refs(body: &str) -> Vec<ProseRef> {
+    scan_prose(body).0
+}
+
+fn scan_prose(body: &str) -> (Vec<ProseRef>, Vec<String>) {
+    use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
+
+    let mut refs = Vec::new();
     let mut links = Vec::new();
-
-    // A text event carries no code: pulldown-cmark reports a code span
-    // and a code block as their own events, indented blocks included.
-    //
-    // The text is collected rather than scanned event by event.
-    // `[[one]]` is not CommonMark, so the parser reads the inner
-    // `[one]` as a shortcut link reference and splits the run into
-    // three events. A scan of each one alone finds no marker.
-    // An inline code span arrives as its own event and never reaches
-    // the buffer. A code block's content arrives as text, fenced and
-    // indented alike, so the block is tracked and its text dropped.
-    let mut in_code_block = false;
-    for event in Parser::new_ext(body, Options::empty()) {
-        match event {
-            Event::Start(Tag::CodeBlock(_)) => in_code_block = true,
-            Event::End(TagEnd::CodeBlock) => {
-                in_code_block = false;
-                prose.push('\n');
-            }
-            Event::Text(text) if !in_code_block => prose.push_str(&text),
-            Event::SoftBreak | Event::HardBreak => prose.push('\n'),
-            Event::End(_) => prose.push('\n'),
+    // A code span and a code block carry no link events, so a reference
+    // quoted as an example is never read as one.
+    for (event, range) in Parser::new_ext(body, Options::ENABLE_WIKILINKS).into_offset_iter() {
+        // `![[id]]` arrives as an image; it names a page all the same.
+        let (link_type, dest_url, embed) = match event {
             Event::Start(Tag::Link {
                 link_type,
                 dest_url,
                 ..
-            }) => {
-                // An autolink is a url by definition, and a shortcut
-                // link with no definition is prose rather than a link.
-                if matches!(link_type, LinkType::Autolink | LinkType::Email) {
-                    continue;
-                }
+            }) => (link_type, dest_url, false),
+            Event::Start(Tag::Image {
+                link_type: link_type @ LinkType::WikiLink { .. },
+                dest_url,
+                ..
+            }) => (link_type, dest_url, true),
+            _ => continue,
+        };
+        match link_type {
+            LinkType::WikiLink { has_pothole } => {
+                let text = has_pothole
+                    .then(|| {
+                        body[range.clone()]
+                            .trim_start_matches('!')
+                            .trim_start_matches("[[")
+                            .trim_end_matches("]]")
+                            .split_once('|')
+                            .map(|(_, text)| text.to_string())
+                    })
+                    .flatten();
+                refs.push(ProseRef {
+                    range,
+                    target: dest_url.to_string(),
+                    text,
+                    embed,
+                });
+            }
+            // An autolink is a url by definition.
+            LinkType::Autolink | LinkType::Email => {}
+            _ => {
                 if let Some(target) = relative_page(&dest_url) {
                     links.push(target);
                 }
             }
-            _ => {}
         }
     }
-    (wiki_targets(&prose), links)
+    (refs, links)
 }
 
 /// Every `[[reference]]` a page's prose names.
@@ -256,37 +291,23 @@ pub fn body_refs(body: &str) -> Vec<String> {
     prose_targets(body).0
 }
 
+/// Every relative `.md` link a page's prose names, as written.
+pub fn prose_links(body: &str) -> Vec<String> {
+    prose_targets(body).1
+}
+
 /// A link destination that names a page file beside this one.
 ///
 /// The title a destination may carry is pulldown-cmark's to strip, so
-/// this sees the url alone.
+/// this sees the url alone. A fragment or query is not part of the
+/// file, so it is cut before the test and from the path returned.
 fn relative_page(dest: &str) -> Option<String> {
     let target = dest.trim();
-    if target.contains("://") || target.starts_with('#') || !target.ends_with(".md") {
+    let path = target.split(['#', '?']).next().unwrap_or_default();
+    if target.contains("://") || path.is_empty() || !path.ends_with(".md") {
         return None;
     }
-    Some(target.to_string())
-}
-
-/// Every `[[reference]]` in one run of text.
-///
-/// Not CommonMark, so pulldown-cmark passes it through as text and this
-/// reads it there, which is what keeps a reference inside code out.
-fn wiki_targets(body: &str) -> Vec<String> {
-    let mut targets = Vec::new();
-    let mut rest = body;
-    while let Some(start) = rest.find("[[") {
-        let from_open = &rest[start + 2..];
-        let Some(end) = from_open.find("]]") else {
-            break;
-        };
-        let target = &from_open[..end];
-        if !target.is_empty() && !target.contains(char::is_whitespace) {
-            targets.push(target.to_string());
-        }
-        rest = &from_open[end + 2..];
-    }
-    targets
+    Some(path.to_string())
 }
 
 #[cfg(test)]
@@ -387,6 +408,15 @@ mod tests {
     }
 
     #[test]
+    fn a_reference_with_a_space_naming_no_page_is_a_fault() {
+        let pages = vec![page("one", Kind::Explanation, "One", "see [[two words]]")];
+        let s = Scratch::new("spaceref", &pages);
+        let found = broken_links(&s.repo(), &pages).expect("check ran");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].message.contains("[[two words]]"), "{:?}", found[0]);
+    }
+
+    #[test]
     fn a_reference_naming_no_page_is_a_fault() {
         // Disabling this check left every suite green, so a set full of
         // dead references reported clean.
@@ -446,11 +476,49 @@ mod tests {
         assert!(findings.iter().all(|f| f.severity == Severity::Advice));
     }
 
+    fn names(body: &str) -> Vec<String> {
+        prose_refs(body).into_iter().map(|r| r.target).collect()
+    }
+
     #[test]
-    fn wiki_targets_ignores_an_unclosed_marker() {
-        assert_eq!(wiki_targets("see [[one]] and [[two]]"), ["one", "two"]);
-        assert_eq!(wiki_targets("see [[open").len(), 0);
-        assert_eq!(wiki_targets("[[two words]]").len(), 0);
+    fn every_reference_in_prose_is_read_and_an_unclosed_one_is_not() {
+        assert_eq!(names("see [[one]] and [[two]]"), ["one", "two"]);
+        assert!(names("see [[open").is_empty());
+        assert_eq!(names("[[shared:onboarding]]"), ["shared:onboarding"]);
+    }
+
+    #[test]
+    fn an_escaped_opening_bracket_is_not_a_reference() {
+        assert!(prose_refs("Escaped \\[[install]] here.").is_empty());
+    }
+
+    #[test]
+    fn an_escaped_backslash_before_a_reference_leaves_it_a_reference() {
+        // `\\` is one literal backslash; the brackets after it still open
+        // a reference, so a broken one is still caught.
+        assert_eq!(names("A path \\\\[[install]] here."), ["install"]);
+    }
+
+    #[test]
+    fn a_link_definition_of_the_same_name_does_not_hide_a_reference() {
+        let body = "See [[install]] here.\n\n[install]: https://example.com\n";
+        assert_eq!(names(body), ["install"]);
+    }
+
+    #[test]
+    fn the_text_after_a_pipe_is_kept() {
+        let refs = prose_refs("See [[install|the install page]].");
+        assert_eq!(refs[0].target, "install");
+        assert_eq!(refs[0].text.as_deref(), Some("the install page"));
+    }
+
+    #[test]
+    fn a_prose_reference_carries_its_byte_range_in_the_body() {
+        let body = "Intro.\n\nSee [[install]] and `[[code]]`.\n";
+        let refs = prose_refs(body);
+        assert_eq!(refs.len(), 1, "{refs:?}");
+        assert_eq!(&body[refs[0].range.clone()], "[[install]]");
+        assert_eq!(refs[0].target, "install");
     }
 
     #[test]

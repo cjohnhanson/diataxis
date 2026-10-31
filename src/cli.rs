@@ -19,20 +19,37 @@ use crate::repo::{CreatePageOptions, EditPageOptions, Repo};
 /// from this one place, so the two cannot drift.
 pub const ABOUT: &str = "Diataxis documentation sets as typed markdown";
 
+/// The long description, which `--help` and the generated reference
+/// print. It carries the facts clap's built-in flags cannot.
+const LONG_ABOUT: &str = "Diataxis documentation sets as typed markdown
+
+Every command takes `-h` or `--help`. `-V` and `--version` work at the
+top level only, as `diataxis --version`; a subcommand refuses them.";
+
 #[derive(Parser)]
-#[command(name = "diataxis", version, about = ABOUT, max_term_width = 98)]
+#[command(
+    name = "diataxis",
+    version,
+    about = ABOUT,
+    long_about = LONG_ABOUT,
+    max_term_width = 98
+)]
 pub struct Args {
     /// Documentation set directory. Literal: the directory must hold
     /// diataxis.yml; no walk, no fallback. Without it, the nearest
     /// diataxis.yml at or above the cwd is used.
     ///
-    /// An empty value is refused. It read as a relative path, joined to
-    /// nothing, and acted on the working directory instead, so an unset
-    /// variable wrote to whichever set the shell happened to stand in.
+    /// An empty value is refused.
+    // An empty value read as a relative path, joined to nothing, and
+    // acted on the working directory, so an unset variable wrote to
+    // whichever set the shell stood in.
     #[arg(long, global = true, value_parser = non_empty_root)]
     pub root: Option<Utf8PathBuf>,
 
-    /// Act on the configured root store, wherever the command runs.
+    /// Act on the configured root set, wherever the command runs.
+    ///
+    /// Conflicts with `--root`. Without either, a read outside any set
+    /// falls back to the configured root set and names it on stderr.
     #[arg(long, global = true, conflicts_with = "root")]
     pub home: bool,
 
@@ -62,7 +79,11 @@ fn intent(command: &Command) -> Option<mdstore::resolve::Intent> {
         // any directory. An agent recalls the two questions without
         // standing in a documentation set.
         Command::Compass(args) if args.page.is_none() => return None,
-        Command::Map | Command::Compass(_) | Command::Check | Command::Search(_) => Read,
+        Command::Map
+        | Command::Compass(_)
+        | Command::Check
+        | Command::Search(_)
+        | Command::Export(_) => Read,
         Command::Store(StoreCommand::List) => Read,
         // Sync mutates the cache.
         Command::Store(StoreCommand::Sync) => Write,
@@ -76,6 +97,12 @@ fn intent(command: &Command) -> Option<mdstore::resolve::Intent> {
 #[derive(Parser)]
 pub enum Command {
     /// Initialize a documentation set in the current directory
+    ///
+    /// Writes `diataxis.yml` and makes the pages directory. An existing
+    /// directory of pages is adopted, so a repository with docs already
+    /// written runs `init` once and keeps every page.
+    ///
+    /// Fails when `diataxis.yml` exists.
     Init,
 
     /// Write the man pages into a directory (the package build uses this)
@@ -93,6 +120,8 @@ pub enum Command {
     },
 
     /// Print what diataxis is and how to use it, for an agent's context
+    ///
+    /// Depends only on the binary, so it runs from any directory.
     Prime,
 
     /// Manage pages
@@ -100,43 +129,113 @@ pub enum Command {
     Page(Box<PageCommand>),
 
     /// Show the set as the four Diataxis quadrants
+    ///
+    /// Prints the quadrants in Diataxis order: tutorial, how-to,
+    /// reference, explanation. Each names what it informs and what it
+    /// serves, with its pages under it. A type with no pages prints
+    /// `(none)`.
     Map,
 
     /// Show the two questions that name a page's type
+    ///
+    /// Prints the two questions and the table that turns a pair of
+    /// answers into one type. Given a page, it prints that page's
+    /// declared type alongside.
+    ///
+    /// The compass does not classify a page: classification needs a
+    /// reader. Without a page, it resolves no set and runs from any
+    /// directory.
     Compass(CompassArgs),
 
     /// Check the pages for type faults and broken links
+    ///
+    /// Faults print first. A fault is provable from the files:
+    ///
+    /// A Markdown file in the pages directory that is not a page.
+    ///
+    /// A how-to title that does not state a goal.
+    ///
+    /// A `[[reference]]` that names no page in this set.
+    ///
+    /// A relative `.md` link that names no file.
+    ///
+    /// A declared set that did not load.
+    ///
+    /// Advice is a gap that is not wrong on its own: a type with no
+    /// pages. Exits non-zero when a fault is found. A reference inside
+    /// code, or escaped as `\[[x]]`, is literal text. Nothing here
+    /// judges prose.
     Check,
 
     /// Search the pages
+    ///
+    /// Matches a regular expression against every page body, without
+    /// regard to case. Prints the page id, the line number, the type,
+    /// and the line.
     Search(SearchArgs),
+
+    /// Write the pages as front-matter Markdown for a site generator
+    ///
+    /// Each page becomes `DIR/<id>.md` with `---` front matter: `title`,
+    /// `description`, `weight`, and `params.diataxis_type`. The weight
+    /// orders pages by type, then by title. A `[[page]]` reference
+    /// becomes a relative `<id>.md` link. The leading H1 is dropped.
+    ///
+    /// Export runs `check` first and refuses a set with a fault, naming
+    /// each one. It also refuses a reference to a page in another set, an
+    /// embed, `![[x]]`, and a relative `.md` link to a file that is not a
+    /// page of the set. `DIR` must not exist: export creates it, and
+    /// removes it again if a write fails. To export again, remove the
+    /// previous output first. File names the site generator reserves,
+    /// such as Hugo's `index` and `_index`, are the site's to avoid.
+    Export(ExportArgs),
 
     /// Manage the declared documentation sets
     #[command(subcommand)]
     Store(StoreCommand),
 
     /// Show the bundled documentation
+    ///
+    /// With no topic, or with `list`, prints one line per bundled page.
+    /// A topic prints one page, by slug, title, or unique prefix.
+    /// `search <query>` prints the pages that hold the query. `--all`
+    /// prints every page whole, in one stream. The pages are compiled
+    /// into the binary, so this works from any directory.
     Docs(DocsArgs),
 }
 
 #[derive(Parser)]
 pub enum PageCommand {
     /// Create a page of one type
+    ///
+    /// The type also accepts `guide`, `howto`, `how_to`, and
+    /// `how-to-guide` for a how-to guide, and `discussion` or
+    /// `background` for an explanation.
+    ///
+    /// Fails when a page of that id already exists.
     Create(PageCreateArgs),
 
     /// List the pages
+    ///
+    /// One line per page: the id, the type, and the title.
     List(PageListArgs),
 
     /// Show one page
+    ///
+    /// Prints the metadata and the body. An ambiguous prefix is an error
+    /// that names what it matched.
     Show(PageShowArgs),
 
     /// Change a page
+    ///
+    /// A field left out is left alone. The page is written back in the
+    /// metadata form it was read in, so an edit never converts a file.
     Edit(PageEditArgs),
 
     /// Remove a page
     Delete(PageDeleteArgs),
 
-    /// Print the file path of a page
+    /// Print the file path of a page, to open it in an editor
     Path(PageShowArgs),
 }
 
@@ -190,9 +289,11 @@ pub struct PageEditArgs {
     /// The page id, or a unique prefix of one
     pub page: String,
 
+    /// Replace the title
     #[arg(long)]
     pub title: Option<String>,
 
+    /// Replace the description
     #[arg(short, long)]
     pub description: Option<String>,
 
@@ -218,10 +319,20 @@ pub struct CompassArgs {
 #[derive(Parser)]
 pub enum StoreCommand {
     /// List the documentation sets this set reads
+    ///
+    /// One row per set in the closure: this set first, then each
+    /// declared set under its alias, with its source and its page count.
+    /// A remote set shows the time since its last fetch.
     List,
     /// Fetch the declared remote sets into the local cache
+    ///
+    /// Exits non-zero when a fetch fails. No other command reaches the
+    /// network.
     Sync,
     /// Show or set the root set that reads fall back to
+    ///
+    /// The directory must hold `diataxis.yml`. This command resolves no
+    /// set and runs from any directory.
     Root(StoreRootArgs),
 }
 
@@ -240,6 +351,13 @@ pub struct StoreRootArgs {
 pub struct SearchArgs {
     /// A regular expression, matched without regard to case
     pub pattern: String,
+}
+
+#[derive(clap::Args)]
+pub struct ExportArgs {
+    /// The directory to create and write into; it must not exist yet
+    #[arg(long, value_name = "DIR")]
+    pub out: Utf8PathBuf,
 }
 
 pub use crate::docs::DocsArgs;
@@ -382,8 +500,16 @@ pub fn run_command(root: &Utf8Path, command: Command) -> Result<()> {
 
         Command::Search(args) => run_search(root, &args.pattern),
 
+        Command::Export(args) => run_export(root, &args),
+
         Command::Store(cmd) => run_store(root, cmd),
     }
+}
+
+fn run_export(root: &Utf8Path, args: &ExportArgs) -> Result<()> {
+    let written = crate::export::export(root, &args.out)?;
+    println!("exported {} page(s) to {}", written.len(), args.out);
+    Ok(())
 }
 
 fn run_page(root: &Utf8Path, command: PageCommand) -> Result<()> {

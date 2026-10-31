@@ -16,3 +16,18 @@ assertions:
         grep -q 'tutorial how-to reference explanation'
   - name: "store list counts four pages"
     command: "diataxis store list | grep -q '4 page'"
+  - name: "export writes one file per page, and the pages are byte for byte as before"
+    command: |
+      tmp=$(mktemp -d) && trap 'rm -rf "$tmp"' EXIT &&
+        cksum docs/*.md > "$tmp/before" &&
+        diataxis export --out "$tmp/out" >/dev/null &&
+        test "$(ls "$tmp/out" | wc -l | tr -d ' ')" = 4 &&
+        grep -q '^  diataxis_type: how-to$' "$tmp/out/how-to-rotate-the-signing-key.md" &&
+        cksum docs/*.md | cmp -s - "$tmp/before"
+  - name: "export refuses the pages directory and changes nothing in it"
+    command: |
+      tmp=$(mktemp -d) && trap 'rm -rf "$tmp"' EXIT &&
+        cksum docs/*.md > "$tmp/before" &&
+        ! diataxis export --out docs 2>"$tmp/err" &&
+        grep -q 'already exists' "$tmp/err" &&
+        cksum docs/*.md | cmp -s - "$tmp/before"
