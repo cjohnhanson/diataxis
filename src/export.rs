@@ -86,7 +86,7 @@ pub fn export(root: &Utf8Path, out: &Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     }
     if !refused.is_empty() {
         return Err(Error::General(format!(
-            "export cannot link {} reference(s):\n{}",
+            "export cannot link {} reference(s) or link(s):\n{}",
             refused.len(),
             refused.join("\n")
         )));
