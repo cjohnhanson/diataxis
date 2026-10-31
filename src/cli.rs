@@ -182,8 +182,9 @@ pub enum Command {
     /// becomes a relative `<id>.md` link. The leading H1 is dropped.
     ///
     /// Export runs `check` first and refuses a set with a fault, naming
-    /// each one. It also refuses a reference to a page in another set and
-    /// an embed, `![[x]]`. `DIR` must not exist: export creates it, and
+    /// each one. It also refuses a reference to a page in another set, an
+    /// embed, `![[x]]`, and a relative `.md` link to a file that is not a
+    /// page of the set. `DIR` must not exist: export creates it, and
     /// removes it again if a write fails. To export again, remove the
     /// previous output first. File names the site generator reserves,
     /// such as Hugo's `index` and `_index`, are the site's to avoid.

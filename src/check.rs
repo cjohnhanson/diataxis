@@ -299,13 +299,15 @@ pub fn prose_links(body: &str) -> Vec<String> {
 /// A link destination that names a page file beside this one.
 ///
 /// The title a destination may carry is pulldown-cmark's to strip, so
-/// this sees the url alone.
+/// this sees the url alone. A fragment or query is not part of the
+/// file, so it is cut before the test and from the path returned.
 fn relative_page(dest: &str) -> Option<String> {
     let target = dest.trim();
-    if target.contains("://") || target.starts_with('#') || !target.ends_with(".md") {
+    let path = target.split(['#', '?']).next().unwrap_or_default();
+    if target.contains("://") || path.is_empty() || !path.ends_with(".md") {
         return None;
     }
-    Some(target.to_string())
+    Some(path.to_string())
 }
 
 #[cfg(test)]

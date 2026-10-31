@@ -327,7 +327,7 @@ Write the pages as front-matter Markdown for a site generator
 
 Each page becomes `DIR/<id>.md` with `---` front matter: `title`, `description`, `weight`, and `params.diataxis_type`. The weight orders pages by type, then by title. A `[[page]]` reference becomes a relative `<id>.md` link. The leading H1 is dropped.
 
-Export runs `check` first and refuses a set with a fault, naming each one. It also refuses a reference to a page in another set and an embed, `![[x]]`. `DIR` must not exist: export creates it, and removes it again if a write fails. To export again, remove the previous output first. File names the site generator reserves, such as Hugo's `index` and `_index`, are the site's to avoid.
+Export runs `check` first and refuses a set with a fault, naming each one. It also refuses a reference to a page in another set, an embed, `![[x]]`, and a relative `.md` link to a file that is not a page of the set. `DIR` must not exist: export creates it, and removes it again if a write fails. To export again, remove the previous output first. File names the site generator reserves, such as Hugo's `index` and `_index`, are the site's to avoid.
 
 ### Flags
 

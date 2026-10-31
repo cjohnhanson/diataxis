@@ -336,13 +336,15 @@ mod tests {
             "See [the readme](../README.md).\n",
             "See [sub](sub/x.md).\n",
             "See [gone](absent.md).\n",
+            "See [the readme](../README.md#top).\n",
+            "See [gone](absent.md?v=1).\n",
         ] {
             let err = rewrite_body("a", body, &titles()).unwrap_err();
             assert_eq!(err.len(), 1, "{body}: {err:?}");
             assert!(err[0].contains("full URL"), "{err:?}");
         }
         // A link to a page of this set, with or without ./, passes.
-        let body = "See [install](install.md) and [why](./why.md).\n";
+        let body = "See [install](install.md#steps) and [why](./why.md).\n";
         assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
     }
 

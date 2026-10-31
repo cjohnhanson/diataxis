@@ -17,7 +17,8 @@
 
 - Export turns `[[page]]` into `[<target title>](<page.md>)`.
   Links use angle brackets so an id may hold a space or a parenthesis.
-  Export escapes markup characters in the target title.
+  Export escapes markup characters in the target title and
+  percent-encodes `#`, `?` and `%` in the link.
   `[[page|text]]` keeps its text. Export drops the leading H1 because
   the site renders the title from front matter.
 
@@ -26,7 +27,9 @@
 
 - Export also refuses references to pages in another set,
   `[[alias:page]]`, and embeds, `![[page]]`. A single-set export cannot
-  link them. One error names every such reference.
+  link them. It refuses a relative `.md` link to a file that is not a
+  page of the set, because export writes only pages. One error names
+  every such reference and link.
 
 - `<DIR>` must not exist. Export creates it and removes it again if a
   write fails, so a failed export leaves nothing behind. It never
