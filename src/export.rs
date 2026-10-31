@@ -12,8 +12,9 @@
 //! those.
 //!
 //! `check` owns validity, and export runs it first. Export adds one
-//! refusal of its own: a reference to a page in another set, which a
-//! single-set export cannot turn into a link.
+//! refusal of its own: a reference to a page in another set, or an
+//! embed, `![[x]]`, neither of which a single-set export can turn into
+//! a link.
 
 use std::collections::HashMap;
 
@@ -25,33 +26,46 @@ use crate::error::{Error, Result};
 use crate::page::{Kind, Page};
 use crate::repo::Repo;
 
-/// Write every page of the set into `out`, a directory that must not
-/// exist yet, and return the files written.
+/// Write every page of the set rooted at `root` into `out`, a directory
+/// that must not exist yet, and return the files written.
 ///
 /// Fails, leaving no directory behind, when `check` reports a fault, a
-/// page references a page in another set, `out` exists, or a write
-/// fails.
-pub fn export(repo: &Repo, root: &Utf8Path, out: &Utf8Path) -> Result<Vec<Utf8PathBuf>> {
+/// page references or embeds a page export cannot link, `out` exists,
+/// or a write fails. Every fault of a kind is named at once.
+pub fn export(root: &Utf8Path, out: &Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     if out.as_str().trim().is_empty() {
         return Err(Error::General(
             "--out takes a path for a new directory, not an empty value".to_string(),
         ));
     }
     if out.exists() {
+        // The set's own directories get a refusal that never suggests
+        // removing them.
+        let docs = Repo::open(root)?.docs_dir()?;
+        let own = |p: &Utf8Path| p.canonicalize_utf8().ok();
+        let out_real = own(out);
+        if out_real.is_some() && (out_real == own(&docs) || out_real == own(root)) {
+            return Err(Error::General(format!(
+                "{out} already exists and holds this set; name a new path outside it"
+            )));
+        }
         return Err(Error::General(format!(
-            "{out} already exists; export creates its own directory, so name a path that does not exist yet"
+            "{out} already exists; export creates its own directory. Remove the previous export, or name a path that does not exist yet"
         )));
     }
-    let faults = check(root)?
+    let faults: Vec<String> = check(root)?
         .into_iter()
         .filter(|f| f.severity == Severity::Fault)
-        .count();
-    if faults > 0 {
+        .map(|f| format!("  {}: {}", f.subject, f.message))
+        .collect();
+    if !faults.is_empty() {
         return Err(Error::General(format!(
-            "`diataxis check` reports {faults} fault(s); export writes a set with none. Run `diataxis check` to see them"
+            "export writes a set with no `diataxis check` faults, and this set has {}:\n{}",
+            faults.len(),
+            faults.join("\n")
         )));
     }
-    let pages = repo.list_strict()?;
+    let pages = Repo::open(root)?.list_strict()?;
     let titles: HashMap<&str, &str> = pages.iter().map(|p| (p.id.as_str(), p.title())).collect();
 
     let mut ordered: Vec<&Page> = pages.iter().collect();
@@ -60,25 +74,42 @@ pub fn export(repo: &Repo, root: &Utf8Path, out: &Utf8Path) -> Result<Vec<Utf8Pa
         (kind, p.title().to_lowercase(), p.id.clone())
     });
     let mut files = Vec::with_capacity(ordered.len());
+    let mut refused = Vec::new();
     for (position, page) in ordered.into_iter().enumerate() {
-        // From 1, because Hugo reads a weight of zero as no weight.
-        let weight = u32::try_from(position + 1)
-            .map_err(|_| Error::General("too many pages to order".to_string()))?;
-        files.push((
-            format!("{}.md", page.id),
-            render_page(page, &titles, weight)?,
-        ));
+        // From 1, because Hugo reads a weight of zero as no weight. A
+        // set of more than u32::MAX pages does not fit on a disk.
+        let weight = u32::try_from(position + 1).unwrap_or(u32::MAX);
+        match render_page(page, &titles, weight) {
+            Ok(text) => files.push((format!("{}.md", page.id), text)),
+            Err(problems) => refused.extend(problems),
+        }
+    }
+    if !refused.is_empty() {
+        return Err(Error::General(format!(
+            "export cannot link {} reference(s):\n{}",
+            refused.len(),
+            refused.join("\n")
+        )));
     }
 
-    std::fs::create_dir(out).map_err(|e| Error::General(format!("cannot create {out}: {e}")))?;
+    std::fs::create_dir(out).map_err(|e| {
+        Error::General(format!(
+            "cannot create {out}: {e}; export makes the directory itself, not its parents, so the parent must exist"
+        ))
+    })?;
     let mut written = Vec::with_capacity(files.len());
     for (name, text) in files {
         let path = out.join(name);
         if let Err(e) = std::fs::write(&path, text) {
             // The directory is export's own, made above, so removing it
             // leaves the path as it was.
-            let _ = std::fs::remove_dir_all(out);
-            return Err(Error::General(format!("cannot write {path}: {e}")));
+            let cleanup = match std::fs::remove_dir_all(out) {
+                Ok(()) => String::new(),
+                Err(c) => {
+                    format!("; removing {out} also failed ({c}), so remove it before a new export")
+                }
+            };
+            return Err(Error::General(format!("cannot write {path}: {e}{cleanup}")));
         }
         written.push(path);
     }
@@ -100,8 +131,13 @@ struct PageParams {
     diataxis_type: &'static str,
 }
 
-/// One page as a front-matter Markdown file, ending in one newline.
-fn render_page(page: &Page, titles: &HashMap<&str, &str>, weight: u32) -> Result<String> {
+/// One page as a front-matter Markdown file, ending in one newline, or
+/// every reference on it that export cannot link.
+fn render_page(
+    page: &Page,
+    titles: &HashMap<&str, &str>,
+    weight: u32,
+) -> std::result::Result<String, Vec<String>> {
     let front = PageFront {
         title: page.title(),
         description: &page.frontmatter.description,
@@ -111,15 +147,18 @@ fn render_page(page: &Page, titles: &HashMap<&str, &str>, weight: u32) -> Result
         },
     };
     let body = rewrite_body(&page.id, &page.body, titles)?;
-    Ok(format!(
-        "---\n{}---\n\n{}\n",
-        yaml_serde::to_string(&front)?,
-        body.trim_end()
-    ))
+    let front = yaml_serde::to_string(&front)
+        .map_err(|e| vec![format!("  {}: front matter: {e}", page.id)])?;
+    Ok(format!("---\n{front}---\n\n{}\n", body.trim_end()))
 }
 
-/// The body with its references rewritten and its leading H1 dropped.
-fn rewrite_body(id: &str, body: &str, titles: &HashMap<&str, &str>) -> Result<String> {
+/// The body with its references rewritten and its leading H1 dropped,
+/// or every reference on the page that export cannot link.
+fn rewrite_body(
+    id: &str,
+    body: &str,
+    titles: &HashMap<&str, &str>,
+) -> std::result::Result<String, Vec<String>> {
     use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag};
 
     let mut start = 0;
@@ -141,28 +180,42 @@ fn rewrite_body(id: &str, body: &str, titles: &HashMap<&str, &str>) -> Result<St
     // Byte ranges from check's own scan, not a re-serialised document,
     // so every other byte of the page survives.
     let mut out = String::with_capacity(body.len());
+    let mut problems = Vec::new();
     for reference in prose_refs(body) {
         if reference.range.start < cursor {
             continue;
         }
         let target = reference.target.as_str();
+        if reference.embed {
+            problems.push(format!(
+                "  {id}: ![[{target}]] embeds a page, which a site cannot render; write [[{target}]] to link it"
+            ));
+            continue;
+        }
         if target.contains(':') {
-            return Err(Error::General(format!(
-                "page {id}: [[{target}]] names a page in another set, which a single-set export cannot link; write the other site's URL instead"
-            )));
+            problems.push(format!(
+                "  {id}: [[{target}]] names a page in another set; write the other site's URL instead"
+            ));
+            continue;
         }
         let Some(title) = titles.get(target) else {
-            return Err(Error::General(format!(
-                "page {id}: [[{target}]] names no page; create the page or correct the reference"
-            )));
+            problems.push(format!(
+                "  {id}: [[{target}]] names no page; create the page or correct the reference"
+            ));
+            continue;
         };
         let text = match &reference.text {
             Some(text) => text.clone(),
             None => escape_link_text(title),
         };
         out.push_str(&body[cursor..reference.range.start]);
-        out.push_str(&format!("[{text}]({target}.md)"));
+        // Angle brackets let the destination hold a space or a lone
+        // parenthesis, which a page id may carry.
+        out.push_str(&format!("[{text}](<{target}.md>)"));
         cursor = reference.range.end;
+    }
+    if !problems.is_empty() {
+        return Err(problems);
     }
     out.push_str(&body[cursor..]);
     Ok(out)
@@ -214,13 +267,13 @@ mod tests {
     #[test]
     fn a_reference_in_prose_becomes_a_relative_link_with_the_title() {
         let out = rewrite_body("a", "See [[install]] first.\n", &titles()).unwrap();
-        assert_eq!(out, "See [Install acme](install.md) first.\n");
+        assert_eq!(out, "See [Install acme](<install.md>) first.\n");
     }
 
     #[test]
     fn a_reference_with_its_own_text_keeps_the_text() {
         let out = rewrite_body("a", "See [[install|the install]].\n", &titles()).unwrap();
-        assert_eq!(out, "See [the install](install.md).\n");
+        assert_eq!(out, "See [the install](<install.md>).\n");
     }
 
     #[test]
@@ -228,8 +281,38 @@ mod tests {
         let out = rewrite_body("a", "See [[why]] and [[marked]].\n", &titles()).unwrap();
         assert_eq!(
             out,
-            "See [Why acme \\[queues\\]](why.md) and [Install \\*acme\\* \\\\](marked.md).\n"
+            "See [Why acme \\[queues\\]](<why.md>) and [Install \\*acme\\* \\\\](<marked.md>).\n"
         );
+    }
+
+    #[test]
+    fn an_id_with_a_space_or_a_lone_parenthesis_still_makes_a_link() {
+        let titles = HashMap::from([("two words", "Two words"), ("half(", "Half")]);
+        let out = rewrite_body("a", "See [[two words]] and [[half(]].\n", &titles).unwrap();
+        // Parse the output: each must be a link to its own file.
+        let dests: Vec<String> = pulldown_cmark::Parser::new(&out)
+            .filter_map(|e| match e {
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Link { dest_url, .. }) => {
+                    Some(dest_url.to_string())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(dests, ["two words.md", "half(.md"], "{out}");
+    }
+
+    #[test]
+    fn an_embed_is_refused_with_its_fix() {
+        let err = rewrite_body("a", "See ![[install]].\n", &titles()).unwrap_err();
+        assert_eq!(err.len(), 1, "{err:?}");
+        assert!(err[0].contains("![[install]]") && err[0].contains("write [[install]]"));
+    }
+
+    #[test]
+    fn every_unlinkable_reference_on_a_page_is_named() {
+        let body = "See [[tisket:a]], [[zettel:b]] and ![[install]].\n";
+        let err = rewrite_body("a", body, &titles()).unwrap_err();
+        assert_eq!(err.len(), 3, "{err:?}");
     }
 
     #[test]
@@ -250,22 +333,22 @@ mod tests {
         let body = "# Using [[absent]]\n\nSee [[install]].\n";
         assert_eq!(
             rewrite_body("a", body, &titles()).unwrap(),
-            "See [Install acme](install.md).\n"
+            "See [Install acme](<install.md>).\n"
         );
     }
 
     #[test]
     fn a_reference_that_names_no_page_is_an_error() {
         let err = rewrite_body("a", "See [[absent]].\n", &titles()).unwrap_err();
-        assert!(err.to_string().contains("page a: [[absent]]"), "{err}");
-        assert!(err.to_string().contains("create the page"), "{err}");
+        assert!(err[0].contains("a: [[absent]]"), "{err:?}");
+        assert!(err[0].contains("create the page"), "{err:?}");
     }
 
     #[test]
     fn a_reference_to_another_set_is_an_error() {
         let err = rewrite_body("a", "See [[tisket:workflow]].\n", &titles()).unwrap_err();
-        assert!(err.to_string().contains("[[tisket:workflow]]"), "{err}");
-        assert!(err.to_string().contains("URL"), "{err}");
+        assert!(err[0].contains("[[tisket:workflow]]"), "{err:?}");
+        assert!(err[0].contains("URL"), "{err:?}");
     }
 
     #[test]
@@ -335,7 +418,7 @@ mod tests {
         }
 
         fn export(&self, out: &Utf8Path) -> Result<Vec<Utf8PathBuf>> {
-            export(&Repo::open(&self.0).expect("open"), &self.0, out)
+            export(&self.0, out)
         }
     }
 
@@ -424,6 +507,8 @@ mod tests {
         let out = s.0.join("out");
         let err = s.export(&out).unwrap_err();
         assert!(err.to_string().contains("diataxis check"), "{err}");
+        // The faults are named, so no second command is needed.
+        assert!(err.to_string().contains("[[absent]]"), "{err}");
         assert!(!out.exists(), "a refused export created {out}");
     }
 
@@ -435,12 +520,21 @@ mod tests {
         s.page("first", &meta("First", "tutorial"));
         let docs = s.0.join("docs");
         let before = std::fs::read_to_string(docs.join("first.md")).unwrap();
-        for out in [docs.clone(), s.0.clone(), s.0.join("empty")] {
-            std::fs::create_dir_all(s.0.join("empty")).unwrap();
+        // The set's own directories: refused, and never with advice to
+        // remove them.
+        for out in [docs.clone(), s.0.clone()] {
             let err = s.export(&out).unwrap_err();
-            assert!(err.to_string().contains("already exists"), "{err}");
+            assert!(err.to_string().contains("holds this set"), "{err}");
             assert!(!err.to_string().contains("emove"), "{err}");
         }
+        // Any other existing directory, such as a previous export.
+        std::fs::create_dir_all(s.0.join("previous")).unwrap();
+        let err = s.export(&s.0.join("previous")).unwrap_err();
+        assert!(err.to_string().contains("already exists"), "{err}");
+        assert!(
+            err.to_string().contains("Remove the previous export"),
+            "{err}"
+        );
         assert_eq!(
             std::fs::read_to_string(docs.join("first.md")).unwrap(),
             before

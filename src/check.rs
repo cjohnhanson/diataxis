@@ -215,6 +215,8 @@ pub struct ProseRef {
     pub target: String,
     /// The text after a `|`, as written: `[[id|the text]]`.
     pub text: Option<String>,
+    /// Written as an embed, `![[id]]`, rather than a link.
+    pub embed: bool,
 }
 
 /// Every `[[reference]]` in a page's prose, in body order.
@@ -235,19 +237,26 @@ fn scan_prose(body: &str) -> (Vec<ProseRef>, Vec<String>) {
     // A code span and a code block carry no link events, so a reference
     // quoted as an example is never read as one.
     for (event, range) in Parser::new_ext(body, Options::ENABLE_WIKILINKS).into_offset_iter() {
-        let Event::Start(Tag::Link {
-            link_type,
-            dest_url,
-            ..
-        }) = event
-        else {
-            continue;
+        // `![[id]]` arrives as an image; it names a page all the same.
+        let (link_type, dest_url, embed) = match event {
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                ..
+            }) => (link_type, dest_url, false),
+            Event::Start(Tag::Image {
+                link_type: link_type @ LinkType::WikiLink { .. },
+                dest_url,
+                ..
+            }) => (link_type, dest_url, true),
+            _ => continue,
         };
         match link_type {
             LinkType::WikiLink { has_pothole } => {
                 let text = has_pothole
                     .then(|| {
                         body[range.clone()]
+                            .trim_start_matches('!')
                             .trim_start_matches("[[")
                             .trim_end_matches("]]")
                             .split_once('|')
@@ -258,6 +267,7 @@ fn scan_prose(body: &str) -> (Vec<ProseRef>, Vec<String>) {
                     range,
                     target: dest_url.to_string(),
                     text,
+                    embed,
                 });
             }
             // An autolink is a url by definition.

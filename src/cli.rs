@@ -176,14 +176,17 @@ pub enum Command {
 
     /// Write the pages as front-matter Markdown for a site generator
     ///
-    /// Each page becomes `OUT/<id>.md` with `---` front matter: `title`,
+    /// Each page becomes `DIR/<id>.md` with `---` front matter: `title`,
     /// `description`, `weight`, and `params.diataxis_type`. The weight
     /// orders pages by type, then by title. A `[[page]]` reference
     /// becomes a relative `<id>.md` link. The leading H1 is dropped.
     ///
-    /// Export runs `check` first and refuses a set with a fault. It also
-    /// refuses a reference to a page in another set. `OUT` must not
-    /// exist: export creates it, and removes it again if a write fails.
+    /// Export runs `check` first and refuses a set with a fault, naming
+    /// each one. It also refuses a reference to a page in another set and
+    /// an embed, `![[x]]`. `DIR` must not exist: export creates it, and
+    /// removes it again if a write fails. To export again, remove the
+    /// previous output first. File names the site generator reserves,
+    /// such as Hugo's `index` and `_index`, are the site's to avoid.
     Export(ExportArgs),
 
     /// Manage the declared documentation sets
@@ -352,7 +355,7 @@ pub struct SearchArgs {
 #[derive(clap::Args)]
 pub struct ExportArgs {
     /// The directory to create and write into; it must not exist yet
-    #[arg(long)]
+    #[arg(long, value_name = "DIR")]
     pub out: Utf8PathBuf,
 }
 
@@ -503,8 +506,7 @@ pub fn run_command(root: &Utf8Path, command: Command) -> Result<()> {
 }
 
 fn run_export(root: &Utf8Path, args: &ExportArgs) -> Result<()> {
-    let repo = Repo::open(root)?;
-    let written = crate::export::export(&repo, root, &args.out)?;
+    let written = crate::export::export(root, &args.out)?;
     println!("exported {} page(s) to {}", written.len(), args.out);
     Ok(())
 }

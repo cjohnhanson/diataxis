@@ -53,20 +53,6 @@ Fails when `diataxis.yml` exists.
 
 ### Flags
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
@@ -81,20 +67,6 @@ Depends only on the binary, so it runs from any directory.
 
 ### Flags
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
@@ -104,22 +76,6 @@ Print help (see a summary with '-h')
 - **Usage:** `diataxis page [OPTIONS] <COMMAND>`
 
 Manage pages
-
-### Global Flags
-
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
 
 ### Flags
 
@@ -149,23 +105,9 @@ The page title. A how-to title states a goal: "How to ..."
 
 The Diataxis type: tutorial, how-to, reference, or explanation
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
 #### `-d --description <DESCRIPTION>`
 
 The one-line description
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
 
 #### `-t --tags <TAGS>`
 
@@ -197,20 +139,6 @@ One line per page: the id, the type, and the title.
 
 Show one type only
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
@@ -230,20 +158,6 @@ Prints the metadata and the body. An ambiguous prefix is an error that names wha
 The page id, or a unique prefix of one
 
 ### Flags
-
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
 
 #### `-h --help`
 
@@ -269,23 +183,9 @@ The page id, or a unique prefix of one
 
 Replace the title
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
 #### `-d --description <DESCRIPTION>`
 
 Replace the description
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
 
 #### `-T --type <TYPE>`
 
@@ -317,20 +217,6 @@ The page id, or a unique prefix of one
 
 ### Flags
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
@@ -349,71 +235,9 @@ The page id, or a unique prefix of one
 
 ### Flags
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
-
-## `diataxis page help`
-
-- **Usage:** `diataxis page help [COMMAND]`
-
-Print this message or the help of the given subcommand(s)
-
-## `diataxis page help create`
-
-- **Usage:** `diataxis page help create`
-
-Create a page of one type
-
-## `diataxis page help list`
-
-- **Usage:** `diataxis page help list`
-
-List the pages
-
-## `diataxis page help show`
-
-- **Usage:** `diataxis page help show`
-
-Show one page
-
-## `diataxis page help edit`
-
-- **Usage:** `diataxis page help edit`
-
-Change a page
-
-## `diataxis page help delete`
-
-- **Usage:** `diataxis page help delete`
-
-Remove a page
-
-## `diataxis page help path`
-
-- **Usage:** `diataxis page help path`
-
-Print the file path of a page, to open it in an editor
-
-## `diataxis page help help`
-
-- **Usage:** `diataxis page help help`
-
-Print this message or the help of the given subcommand(s)
 
 ## `diataxis map`
 
@@ -424,20 +248,6 @@ Show the set as the four Diataxis quadrants
 Prints the quadrants in Diataxis order: tutorial, how-to, reference, explanation. Each names what it informs and what it serves, with its pages under it. A type with no pages prints `(none)`.
 
 ### Flags
-
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
 
 #### `-h --help`
 
@@ -460,20 +270,6 @@ The compass does not classify a page: classification needs a reader. Without a p
 A page to name alongside the questions
 
 ### Flags
-
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
 
 #### `-h --help`
 
@@ -501,20 +297,6 @@ Advice is a gap that is not wrong on its own: a type with no pages. Exits non-ze
 
 ### Flags
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
@@ -535,53 +317,25 @@ A regular expression, matched without regard to case
 
 ### Flags
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
 
 ## `diataxis export`
 
-- **Usage:** `diataxis export [OPTIONS] --out <OUT>`
+- **Usage:** `diataxis export [OPTIONS] --out <DIR>`
 
 Write the pages as front-matter Markdown for a site generator
 
-Each page becomes `OUT/<id>.md` with `---` front matter: `title`, `description`, `weight`, and `params.diataxis_type`. The weight orders pages by type, then by title. A `[[page]]` reference becomes a relative `<id>.md` link. The leading H1 is dropped.
+Each page becomes `DIR/<id>.md` with `---` front matter: `title`, `description`, `weight`, and `params.diataxis_type`. The weight orders pages by type, then by title. A `[[page]]` reference becomes a relative `<id>.md` link. The leading H1 is dropped.
 
-Export runs `check` first and refuses a set with a fault. It also refuses a reference to a page in another set. `OUT` must not exist: export creates it, and removes it again if a write fails.
+Export runs `check` first and refuses a set with a fault, naming each one. It also refuses a reference to a page in another set and an embed, `![[x]]`. `DIR` must not exist: export creates it, and removes it again if a write fails. To export again, remove the previous output first. File names the site generator reserves, such as Hugo's `index` and `_index`, are the site's to avoid.
 
 ### Flags
 
-#### `--out <OUT>`
+#### `--out <DIR>`
 
 The directory to create and write into; it must not exist yet
-
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
 
 #### `-h --help`
 
@@ -592,22 +346,6 @@ Print help (see a summary with '-h')
 - **Usage:** `diataxis store [OPTIONS] <COMMAND>`
 
 Manage the declared documentation sets
-
-### Global Flags
-
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
 
 ### Flags
 
@@ -625,20 +363,6 @@ One row per set in the closure: this set first, then each declared set under its
 
 ### Flags
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
@@ -652,20 +376,6 @@ Fetch the declared remote sets into the local cache
 Exits non-zero when a fetch fails. No other command reaches the network.
 
 ### Flags
-
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
 
 #### `-h --help`
 
@@ -693,53 +403,9 @@ Replace an already-set root with a different one
 
 **Default:** `false`
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
-
-## `diataxis store help`
-
-- **Usage:** `diataxis store help [COMMAND]`
-
-Print this message or the help of the given subcommand(s)
-
-## `diataxis store help list`
-
-- **Usage:** `diataxis store help list`
-
-List the documentation sets this set reads
-
-## `diataxis store help sync`
-
-- **Usage:** `diataxis store help sync`
-
-Fetch the declared remote sets into the local cache
-
-## `diataxis store help root`
-
-- **Usage:** `diataxis store help root`
-
-Show or set the root set that reads fall back to
-
-## `diataxis store help help`
-
-- **Usage:** `diataxis store help help`
-
-Print this message or the help of the given subcommand(s)
 
 ## `diataxis docs`
 
@@ -767,146 +433,6 @@ Print every page whole, in one stream
 
 **Default:** `false`
 
-#### `--root <ROOT>`
-
-Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
-
-An empty value is refused.
-
-#### `--home`
-
-Act on the configured root set, wherever the command runs.
-
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
-
-**Default:** `false`
-
 #### `-h --help`
 
 Print help (see a summary with '-h')
-
-## `diataxis help`
-
-- **Usage:** `diataxis help [COMMAND]`
-
-Print this message or the help of the given subcommand(s)
-
-## `diataxis help init`
-
-- **Usage:** `diataxis help init`
-
-Initialize a documentation set in the current directory
-
-## `diataxis help prime`
-
-- **Usage:** `diataxis help prime`
-
-Print what diataxis is and how to use it, for an agent's context
-
-## `diataxis help page`
-
-- **Usage:** `diataxis help page [COMMAND]`
-
-Manage pages
-
-## `diataxis help page create`
-
-- **Usage:** `diataxis help page create`
-
-Create a page of one type
-
-## `diataxis help page list`
-
-- **Usage:** `diataxis help page list`
-
-List the pages
-
-## `diataxis help page show`
-
-- **Usage:** `diataxis help page show`
-
-Show one page
-
-## `diataxis help page edit`
-
-- **Usage:** `diataxis help page edit`
-
-Change a page
-
-## `diataxis help page delete`
-
-- **Usage:** `diataxis help page delete`
-
-Remove a page
-
-## `diataxis help page path`
-
-- **Usage:** `diataxis help page path`
-
-Print the file path of a page, to open it in an editor
-
-## `diataxis help map`
-
-- **Usage:** `diataxis help map`
-
-Show the set as the four Diataxis quadrants
-
-## `diataxis help compass`
-
-- **Usage:** `diataxis help compass`
-
-Show the two questions that name a page's type
-
-## `diataxis help check`
-
-- **Usage:** `diataxis help check`
-
-Check the pages for type faults and broken links
-
-## `diataxis help search`
-
-- **Usage:** `diataxis help search`
-
-Search the pages
-
-## `diataxis help export`
-
-- **Usage:** `diataxis help export`
-
-Write the pages as front-matter Markdown for a site generator
-
-## `diataxis help store`
-
-- **Usage:** `diataxis help store [COMMAND]`
-
-Manage the declared documentation sets
-
-## `diataxis help store list`
-
-- **Usage:** `diataxis help store list`
-
-List the documentation sets this set reads
-
-## `diataxis help store sync`
-
-- **Usage:** `diataxis help store sync`
-
-Fetch the declared remote sets into the local cache
-
-## `diataxis help store root`
-
-- **Usage:** `diataxis help store root`
-
-Show or set the root set that reads fall back to
-
-## `diataxis help docs`
-
-- **Usage:** `diataxis help docs`
-
-Show the bundled documentation
-
-## `diataxis help help`
-
-- **Usage:** `diataxis help help`
-
-Print this message or the help of the given subcommand(s)
