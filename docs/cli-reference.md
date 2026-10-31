@@ -6,7 +6,7 @@ type: reference
 
 # diataxis CLI reference
 
-- **Version:** 0.1.1
+- **Version:** 0.2.0
 
 Diataxis documentation sets as typed markdown
 

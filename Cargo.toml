@@ -1,6 +1,6 @@
 [package]
 name = "diataxis"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 # 1.88, read from the graph rather than from the edition. Edition 2024
 # needs 1.85, and 1.85 was declared here and was false: this crate uses
