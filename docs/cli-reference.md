@@ -6,8 +6,6 @@ type: reference
 
 # diataxis CLI reference
 
-- **Version:** 0.2.0
-
 Diataxis documentation sets as typed markdown
 
 Every command takes `-h` or `--help`. `-V` and `--version` work at the

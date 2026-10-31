@@ -431,6 +431,18 @@ mod tests {
         );
         let body = "Text first.\n\n# Heading\n";
         assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
+        // Only a leading H1 is the title; a body that opens with an H2
+        // keeps it.
+        let body = "## Setup\n\nText.\n";
+        assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
+    }
+
+    #[test]
+    fn every_character_markdown_or_html_reads_is_escaped_in_link_text() {
+        assert_eq!(
+            escape_link_text(r"\`*_[]<>!& plain"),
+            r"\\\`\*\_\[\]\<\>\!\& plain"
+        );
     }
 
     #[test]
