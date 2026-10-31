@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::Serialize;
 
-use crate::check::{Severity, check, prose_refs};
+use crate::check::{Severity, check, prose_links, prose_refs};
 use crate::error::{Error, Result};
 use crate::page::{Kind, Page};
 use crate::repo::Repo;
@@ -93,14 +93,30 @@ pub fn export(root: &Utf8Path, out: &Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     }
 
     std::fs::create_dir(out).map_err(|e| {
-        Error::General(format!(
-            "cannot create {out}: {e}; export makes the directory itself, not its parents, so the parent must exist"
-        ))
+        let parent_missing = out
+            .parent()
+            .is_some_and(|p| !p.as_str().is_empty() && !p.exists());
+        let hint = if parent_missing {
+            "; export makes the directory itself, not its parents, so the parent must exist"
+        } else {
+            ""
+        };
+        Error::General(format!("cannot create {out}: {e}{hint}"))
     })?;
+    write_files(out, files, |path, text| std::fs::write(path, text))
+}
+
+/// Write each file into `out`, a directory export has just made. When a
+/// write fails, `out` is removed again, so the path is as it was.
+fn write_files(
+    out: &Utf8Path,
+    files: Vec<(String, String)>,
+    write: impl Fn(&Utf8Path, &str) -> std::io::Result<()>,
+) -> Result<Vec<Utf8PathBuf>> {
     let mut written = Vec::with_capacity(files.len());
     for (name, text) in files {
         let path = out.join(name);
-        if let Err(e) = std::fs::write(&path, text) {
+        if let Err(e) = write(&path, &text) {
             // The directory is export's own, made above, so removing it
             // leaves the path as it was.
             let cleanup = match std::fs::remove_dir_all(out) {
@@ -210,15 +226,44 @@ fn rewrite_body(
         };
         out.push_str(&body[cursor..reference.range.start]);
         // Angle brackets let the destination hold a space or a lone
-        // parenthesis, which a page id may carry.
-        out.push_str(&format!("[{text}](<{target}.md>)"));
+        // parenthesis, which a page id may carry; `#`, `?` and `%` are
+        // encoded, because a link reads them as a fragment or a query.
+        out.push_str(&format!("[{text}](<{}.md>)", encode_destination(target)));
         cursor = reference.range.end;
+    }
+    // A relative `.md` link travels to the site as written, so it must
+    // name a page of this set, the only files export writes beside it.
+    for link in prose_links(&body[start..]) {
+        let stem = link.strip_prefix("./").unwrap_or(&link);
+        let is_page = stem
+            .strip_suffix(".md")
+            .is_some_and(|id| !id.contains('/') && titles.contains_key(id));
+        if !is_page {
+            problems.push(format!(
+                "  {id}: the link to {link} names a file export does not write; write [[id]] for a page of this set, or the file's full URL"
+            ));
+        }
     }
     if !problems.is_empty() {
         return Err(problems);
     }
     out.push_str(&body[cursor..]);
     Ok(out)
+}
+
+/// A page id as a link destination: the characters a URL reads as
+/// structure are percent-encoded, so the link names the file.
+fn encode_destination(id: &str) -> String {
+    let mut out = String::with_capacity(id.len());
+    for c in id.chars() {
+        match c {
+            '%' => out.push_str("%25"),
+            '#' => out.push_str("%23"),
+            '?' => out.push_str("%3F"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// A title as literal link text: every character CommonMark could read
@@ -282,6 +327,32 @@ mod tests {
         assert_eq!(
             out,
             "See [Why acme \\[queues\\]](<why.md>) and [Install \\*acme\\* \\\\](<marked.md>).\n"
+        );
+    }
+
+    #[test]
+    fn a_relative_link_to_a_file_export_does_not_write_is_refused() {
+        for body in [
+            "See [the readme](../README.md).\n",
+            "See [sub](sub/x.md).\n",
+            "See [gone](absent.md).\n",
+        ] {
+            let err = rewrite_body("a", body, &titles()).unwrap_err();
+            assert_eq!(err.len(), 1, "{body}: {err:?}");
+            assert!(err[0].contains("full URL"), "{err:?}");
+        }
+        // A link to a page of this set, with or without ./, passes.
+        let body = "See [install](install.md) and [why](./why.md).\n";
+        assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
+    }
+
+    #[test]
+    fn an_id_with_a_hash_question_mark_or_percent_is_encoded() {
+        let titles = HashMap::from([("c#", "C sharp"), ("why?", "Why"), ("100%", "All")]);
+        let out = rewrite_body("a", "[[c#]] [[why?]] [[100%]]\n", &titles).unwrap();
+        assert_eq!(
+            out,
+            "[C sharp](<c%23.md>) [Why](<why%3F.md>) [All](<100%25.md>)\n"
         );
     }
 
@@ -539,6 +610,33 @@ mod tests {
             std::fs::read_to_string(docs.join("first.md")).unwrap(),
             before
         );
+    }
+
+    #[test]
+    fn a_failed_write_removes_the_directory_export_made() {
+        let s = Scratch::new("writefail");
+        let out = s.0.join("out");
+        std::fs::create_dir(&out).unwrap();
+        let files = vec![
+            ("first.md".to_string(), "one".to_string()),
+            ("second.md".to_string(), "two".to_string()),
+        ];
+        let err = write_files(&out, files, |path, text| {
+            if path.as_str().ends_with("second.md") {
+                Err(std::io::Error::other("disk full"))
+            } else {
+                std::fs::write(path, text)
+            }
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("second.md"), "{err}");
+        assert!(!out.exists(), "a failed write left {out}");
+    }
+
+    #[test]
+    fn a_body_that_opens_with_an_h2_keeps_it() {
+        let body = "## Before you begin\n\nText.\n";
+        assert_eq!(rewrite_body("a", body, &titles()).unwrap(), body);
     }
 
     #[test]

@@ -33,7 +33,7 @@ takes the `store` feature and needs neither the command nor its
 dependencies:
 
 ```toml
-diataxis = { version = "0.1", default-features = false, features = ["store"] }
+diataxis = { version = "0.2", default-features = false, features = ["store"] }
 ```
 
 ## Usage
@@ -138,10 +138,10 @@ dependency. Nothing lists the pages:
 
 ```toml
 [build-dependencies]
-diataxis = { version = "0.1", default-features = false, features = ["build"] }
+diataxis = { version = "0.2", default-features = false, features = ["build"] }
 
 [dependencies]
-diataxis = { version = "0.1", default-features = false, features = ["cli"] }
+diataxis = { version = "0.2", default-features = false, features = ["cli"] }
 ```
 
 ```rust

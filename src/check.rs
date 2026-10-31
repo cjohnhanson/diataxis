@@ -291,6 +291,11 @@ pub fn body_refs(body: &str) -> Vec<String> {
     prose_targets(body).0
 }
 
+/// Every relative `.md` link a page's prose names, as written.
+pub fn prose_links(body: &str) -> Vec<String> {
+    prose_targets(body).1
+}
+
 /// A link destination that names a page file beside this one.
 ///
 /// The title a destination may carry is pulldown-cmark's to strip, so
@@ -398,6 +403,15 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn a_reference_with_a_space_naming_no_page_is_a_fault() {
+        let pages = vec![page("one", Kind::Explanation, "One", "see [[two words]]")];
+        let s = Scratch::new("spaceref", &pages);
+        let found = broken_links(&s.repo(), &pages).expect("check ran");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].message.contains("[[two words]]"), "{:?}", found[0]);
     }
 
     #[test]

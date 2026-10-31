@@ -315,6 +315,17 @@ mod tests {
     }
 
     #[test]
+    fn list_strict_refuses_a_page_that_list_skips() {
+        let s = Scratch::new("strict");
+        let repo = s.repo();
+        let dir = repo.docs_dir().expect("docs dir");
+        std::fs::write(dir.join("broken.md"), "no metadata at all\n").expect("write");
+        assert!(repo.list().expect("list skips it").is_empty());
+        let err = repo.list_strict().expect_err("strict refuses it");
+        assert!(err.to_string().contains("broken.md"), "{err}");
+    }
+
+    #[test]
     fn create_refuses_a_page_that_exists() {
         // Without the refusal, a second create overwrites the first and
         // its body is gone with no message.
