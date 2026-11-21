@@ -470,15 +470,27 @@ class Unreadable(unittest.TestCase):
     def test_readme_short_help_and_extra_arguments(self):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(readme.main(["-h"]), 0)
-        with contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(readme.main(["tundish", "a.md", "b.md"]), 2)
+        self.assertUsage(["tundish", "a.md", "b.md"])
+
+    def assertUsage(self, argv):
+        """The usage refusal, not a read error, answers `argv`."""
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(readme.main(argv), 2)
+        self.assertIn("usage: check-readme.py TOOL [README]", stderr.getvalue())
 
     def test_readme_swapped_arguments_exit_2(self):
-        self.assertEqual(readme.main(["README.md"]), 2)
+        self.assertUsage(["README.md"])
 
     def test_readme_unknown_option_exits_2(self):
-        self.assertEqual(readme.main(["--foo"]), 2)
-        self.assertEqual(readme.main(["--tool", "tundish"]), 2)
+        self.assertUsage(["--foo"])
+        self.assertUsage(["--tool", "tundish"])
+
+    def test_readme_findings_print_in_line_order(self):
+        text = Readme.GOOD.replace("A local inbox.\n", "# Second\n")
+        lines = [int(f.split(":")[1]) for f in readme.check("tundish", write(text))]
+        self.assertEqual(lines, sorted(lines))
+        self.assertGreater(len(lines), 1)
 
     def test_title_ending_in_a_period_names_the_tool(self):
         text = Readme.GOOD.replace("# tundish", "# tundish.")
