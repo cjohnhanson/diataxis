@@ -51,6 +51,12 @@ github:
           components: clippy, rustfmt
       - name: rust cache
         uses: Swatinem/rust-cache@v2
+      # The merge gate builds each feature alone with cargo-hack and
+      # runs the missouri suite; it refuses to pass without either.
+      - name: cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: install missouri
+        uses: cjohnhanson/missouri@main
       - name: gaff
         uses: cjohnhanson/gaff@main
 
@@ -68,6 +74,8 @@ github:
           components: clippy, rustfmt
       - name: rust cache
         uses: Swatinem/rust-cache@v2
+      - name: install missouri
+        uses: cjohnhanson/missouri@main
       # `run: false`, because this action runs `gaff ci` by default and
       # that is the review check. Verify installs the binary the suite
       # drives and runs the gate on nothing.
