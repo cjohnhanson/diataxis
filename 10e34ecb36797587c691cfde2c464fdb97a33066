@@ -1,0 +1,8 @@
+signoff[review-tests] PASS 10e34ec depth-limiting the walk, skipping table-form keys, weakening the tilde guard and its page name, and dropping the gutter filter each turned a named test red; a nested-target bad-feature doc mutation failed the dependency test
+signoff[review-docs] PASS 10e34ec swept the tests/docs.rs delta and grepped for leftover wording; read fallback and write refusal checked against the binary match cli-reference.md and cli.rs help
+signoff[review-code] PASS 10e34ec joined miette match holds across a moved wrap at two path lengths; toml_edit walk reaches dotted, quoted, commented-header and target-table keys and replaces the line scan
+signoff[review-deps] PASS 10e34ec five test-only additions are ecosystem defaults with MIT or Apache licences; OSV finds only informational humantime RUSTSEC-2026-0542 via trycmd, test-only
+signoff[review-usability] PASS 10e34ec ran the binary cold in a scratch HOME; write refusal and read fallback match the help, and toml check failures name the page and dotted path
+
+Four rounds. Round 1 (20710d3): docs.yml ran main's scripts/family; adoption guide named another project's functions. Round 2 (38b5d8a): shlex::split dropped an unclosed-quote line. Round 3 (56661a2): line-scan declaration count and a wrap-dependent stderr match, both in code earlier fixes wrote, so the dependency check was redesigned as a walk of the parsed TOML. All five re-ran on 10e34ec.
+Declined as follow-ups: a package-renamed diataxis dependency escapes the walk (no page uses one); non-dependency diataxis keys would fail loudly; humantime unmaintained via trycmd; runtime items (unresolved relative --root paths, store root ".", root-set naming, no-root error naming the default config path).
