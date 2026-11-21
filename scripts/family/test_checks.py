@@ -59,7 +59,7 @@ class Fences(unittest.TestCase):
     def test_dollar_line_in_text_fence_fails(self):
         self.assertEqual(len(self.findings("```text\n$ gaff check\n```\n")), 1)
 
-    def test_tool_name_in_text_fence_without_prompt_passes(self):
+    def test_synopsis_in_text_fence_passes(self):
         self.assertEqual(self.findings("```text\ntundish <command>\n```\n"), [])
 
     def test_yaml_config_naming_a_tool_passes(self):
@@ -291,8 +291,127 @@ class Readme(unittest.TestCase):
     def test_unreadable_file_exits_2(self):
         self.assertEqual(readme.main(["tundish", "/nonexistent/README.md"]), 2)
 
+    def test_exit_status_and_usage(self):
+        self.assertEqual(readme.main(["tundish", write(self.GOOD)]), 0)
+        self.assertEqual(readme.main(["gaff", write(self.GOOD)]), 1)
+        self.assertEqual(readme.main([]), 2)
+
+    def test_level_2_title_fails(self):
+        self.assertEqual(
+            len(self.findings(self.GOOD.replace("# tundish", "## tundish"))), 2
+        )
+
+    def test_name_is_a_whole_word(self):
+        self.assertEqual(
+            len(self.findings(self.GOOD.replace("# tundish", "# gaffr"), tool="gaff")),
+            1,
+        )
+
+    def test_intro_that_is_only_a_heading_fails(self):
+        self.assertEqual(
+            len(self.findings(self.GOOD.replace("A local inbox.", "### Sub"))), 1
+        )
+
+    def test_heading_in_a_tilde_or_long_fence_passes(self):
+        for fence in ("~~~", "````"):
+            text = self.GOOD.replace(
+                "Install it.", f"{fence}markdown\n# Other\n## License\n{fence}"
+            )
+            self.assertEqual(self.findings(text), [], fence)
+
+    def test_section_titles_ignore_case(self):
+        text = self.GOOD.replace("## Installation", "## INSTALL").replace(
+            "## License", "## LICENSE"
+        )
+        self.assertEqual(self.findings(text), [])
+
+    def test_license_finding_names_the_last_section(self):
+        found = readme.check("tundish", write(self.GOOD + "\n## Related\n\nx\n"))
+        self.assertTrue(found[0].split(":")[1] == "13", found)
+
+
+class FenceGuards(unittest.TestCase):
+    """One case per guard, each failing if the guard is removed."""
+
+    def count(self, text):
+        return len(fences.check(write(text)))
+
+    def test_url_first_word_in_a_text_fence_passes(self):
+        self.assertEqual(self.count("```text\nhttps://example.com/tundish\n```\n"), 0)
+
+    def test_shell_comment_with_an_apostrophe_passes(self):
+        self.assertEqual(self.count("```sh\n# tundish isn't here\n```\n"), 0)
+
+    def test_heredoc_ends_at_its_terminator(self):
+        self.assertEqual(self.count("```sh\ncat <<EOF\nx\nEOF\ntundish pull\n```\n"), 1)
+
+    def test_heredoc_marker_in_a_text_fence_hides_nothing(self):
+        self.assertEqual(self.count("```text\nshift <<X\ntundish pull inbox\n```\n"), 1)
+
+    def test_unbalanced_quote_is_still_read(self):
+        self.assertEqual(self.count('```sh\ntundish pull "x\n```\n'), 1)
+
+    def test_subshell_is_read(self):
+        self.assertEqual(self.count("```sh\n(tundish pull)\n```\n"), 1)
+
+    def test_powershell_prompt_is_read(self):
+        self.assertEqual(self.count("```text\nPS> tundish pull\n```\n"), 1)
+
+    def test_a_number_argument_is_not_a_version_line(self):
+        self.assertEqual(self.count("```text\ntundish pull 1.2\n```\n"), 1)
+
+    def test_option_synopsis_passes(self):
+        self.assertEqual(self.count("```text\ntundish pull [--due]\n```\n"), 0)
+
+    def test_h1_ends_the_install_exemption(self):
+        self.assertEqual(
+            self.count("## Install\n\n# Usage\n\n```sh\ntundish pull\n```\n"), 1
+        )
+
+    def test_installation_heading_is_exempt(self):
+        self.assertEqual(self.count("## Installation\n\n```sh\ntundish pull\n```\n"), 0)
+
+    def test_indented_block_under_install_is_exempt(self):
+        self.assertEqual(self.count("## Install\n\nRun:\n\n    tundish --version\n"), 0)
+
+    def test_install_word_must_end(self):
+        self.assertEqual(self.count("```sh\ntypeset tundish\n```\n"), 1)
+
+    def test_every_install_and_locate_form_passes(self):
+        for line in (
+            "sudo cargo install tundish",
+            "uv pip install tundish",
+            "uv tool install tundish",
+            "nix profile install github:x/tundish",
+            "type tundish",
+            "pipx install tundish",
+            "apt install tundish",
+            "dnf install tundish",
+            "cargo binstall tundish",
+        ):
+            self.assertEqual(self.count(f"```sh\n{line}\n```\n"), 0, line)
+
+    def test_second_fence_is_parsed_after_the_first_closes(self):
+        self.assertEqual(
+            self.count("```yaml\na: 1\n```\n\n```sh\ntundish pull\n```\n"), 1
+        )
+
+    def test_two_backticks_open_no_fence(self):
+        self.assertEqual(trycmd_runs("``\n$ tundish\n``\n"), [])
+
+    def test_untagged_block_trycmd_runs_inside_a_tilde_fence_fails(self):
+        self.assertEqual(self.count("~~~markdown\n```\n$ echo hi\n```\n~~~\n"), 1)
+
+
+def trycmd_runs(text):
+    return [index for index, _, _ in fences.trycmd_blocks(text.split("\n"))]
+
 
 class FencesCli(unittest.TestCase):
+    def test_exit_status_follows_findings(self):
+        self.assertEqual(fences.main([write("```console\n$ tundish\n```\n")]), 0)
+        self.assertEqual(fences.main([write("```sh\ntundish pull\n```\n")]), 1)
+
     def test_tool_option_adds_a_name(self):
         path = write("```sh\nringer sync --all\n```\n")
         self.assertEqual(fences.main([path]), 0)

@@ -286,10 +286,10 @@ def check(path):
                         f"tool command in a `{lang}` fence; use `console` so the docs test runs it",
                     )
                 )
-        if top and info:
+        if top:
             seen.add(first)
-    for index, (info, _) in runs.items():
-        if index not in seen and info:
+    for index in runs:
+        if index not in seen:
             findings.append(
                 (
                     index,

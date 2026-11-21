@@ -59,10 +59,12 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: docs test
         run: |
-          grep -qs trycmd "$DOCS_TEST" || {
-            echo "$DOCS_TEST is missing or does not run the docs with trycmd; the docs-test input names another file" >&2
-            exit 1
-          }
+          for word in trycmd README.md docs; do
+            grep -qs "$word" "$DOCS_TEST" || {
+              echo "$DOCS_TEST is missing or never names $word; it runs README.md and docs/ with trycmd (the docs-test input names another file)" >&2
+              exit 1
+            }
+          done
       - name: docs files
         id: files
         if: ${{ !cancelled() }}
