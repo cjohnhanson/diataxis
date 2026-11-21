@@ -40,25 +40,28 @@ pub struct Args {
     /// diataxis.yml at or above the cwd is used.
     ///
     /// `init` writes diataxis.yml into this directory instead. `prime`,
-    /// `docs`, `store root`, and `compass` without a page ignore it.
+    /// `docs`, and `store root` ignore it, and so does `compass` with no
+    /// page.
     ///
     /// An empty value is refused.
     // An empty value read as a relative path, joined to nothing, and
     // acted on the working directory, so an unset variable wrote to
     // whichever set the shell stood in.
-    // Handler: run (src/cli.rs): a command `intent` returns None for
-    // joins it to the cwd and passes it to run_command, where only
-    // Command::Init reads it; every other command passes it to
-    // mdstore::resolve::resolve_root.
+    // Handler: run (src/cli.rs). For a command `intent` returns None
+    // for, a relative value is joined to the cwd and passed to
+    // run_command, where only Command::Init reads it. Every other
+    // command passes it to mdstore::resolve::resolve_root.
     #[arg(long, global = true, value_parser = non_empty_root)]
     pub root: Option<Utf8PathBuf>,
 
     /// Act on the configured root set, wherever the command runs.
     ///
     /// Conflicts with `--root`. Without either, a read outside any set
-    /// falls back to the configured root set and names it on stderr, and
-    /// a write outside any set fails. `init`, `prime`, `docs`, `store
-    /// root`, and `compass` without a page refuse `--home`.
+    /// falls back to the configured root set and names it on stderr. A
+    /// write outside any set fails.
+    ///
+    /// `init`, `prime`, `docs`, and `store root` refuse `--home`, and so
+    /// does `compass` with no page.
     // Handler: run (src/cli.rs): the `intent` None branch refuses it,
     // and mdstore::resolve::resolve_root reads it for the rest.
     #[arg(long, global = true, conflicts_with = "root")]

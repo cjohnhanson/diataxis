@@ -55,11 +55,19 @@ pub mod mangen;
 
 #[cfg(feature = "cli")]
 pub use docs::DocsArgs;
+#[cfg(feature = "store")]
+pub use docs::{DocPage, DocSet, Request};
+#[cfg(feature = "store")]
+pub use error::{Error, Result};
+#[cfg(feature = "store")]
+pub use page::{Kind, Page, PageFrontmatter};
+#[cfg(feature = "store")]
+pub use repo::{CreatePageOptions, EditPageOptions, Repo, SearchResult};
 
 /// The Rust examples in README.md, compiled by `cargo test --doc`. A
 /// consumer copies them, so an example that names a function this crate
 /// lacks fails the build here first. Each example uses one of the three
-/// features, so the doctests need all three.
+/// features, so the doctests need all three; `cli` implies `store`.
 ///
 /// A page's `{filename="..."}` fences are for tests/docs.rs, and rustdoc
 /// warns on an attribute it does not know, so that warning is off here.
@@ -73,14 +81,6 @@ pub struct ReadmeDoctests;
 #[allow(rustdoc::invalid_codeblock_attributes)]
 #[doc = include_str!("../docs/how-to-adopt-diataxis-in-an-existing-project.md")]
 pub struct AdoptionGuideDoctests;
-#[cfg(feature = "store")]
-pub use docs::{DocPage, DocSet, Request};
-#[cfg(feature = "store")]
-pub use error::{Error, Result};
-#[cfg(feature = "store")]
-pub use page::{Kind, Page, PageFrontmatter};
-#[cfg(feature = "store")]
-pub use repo::{CreatePageOptions, EditPageOptions, Repo, SearchResult};
 
 /// Every page of this project's documentation set, compiled in.
 ///

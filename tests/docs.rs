@@ -34,8 +34,8 @@
 //! `help_matches_snapshots` compares the `--help` output of every visible
 //! command with tests/snapshots/help/. docs/cli-reference.md is generated
 //! from the same definitions by tests/cli_reference.rs. The Rust examples
-//! in README.md and docs/ compile as doctests (`ReadmeDoctests` in
-//! src/lib.rs).
+//! in README.md and the adoption guide compile as doctests
+//! (`ReadmeDoctests` and `AdoptionGuideDoctests` in src/lib.rs).
 //!
 //! Write the real output into the pages and snapshots, then read the
 //! diff: `TRYCMD=overwrite cargo test --test docs` for the examples,
@@ -130,7 +130,13 @@ fn run_page(scratch: &Path, page: &Path) {
         }
     }
     std::fs::create_dir_all(&bin).unwrap();
-    let setup = std::fs::read_to_string(fixtures.join("setup.md")).unwrap_or_default();
+    // No setup.md means no setup; any other read error fails the page,
+    // rather than running it without the state it assumes.
+    let setup = match std::fs::read_to_string(fixtures.join("setup.md")) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => panic!("read the setup for {}: {e}", page.display()),
+    };
     let body = std::fs::read_to_string(page).unwrap();
     let text = format!("{setup}{body}");
 
@@ -320,8 +326,11 @@ fn commands(page: &Path, text: &str) -> std::collections::BTreeSet<String> {
     let mut names = std::collections::BTreeSet::new();
     for line in run_lines(page, text) {
         if let Some(cmd) = line.strip_prefix("$ ") {
-            if let Some(word) = cmd.split_whitespace().find(|w| !w.contains('=')) {
-                names.insert(word.to_string());
+            // Split as trycmd does (shlex), so a quoted command word
+            // names the program trycmd runs.
+            let words = shlex::split(cmd).unwrap_or_default();
+            if let Some(word) = words.into_iter().find(|w| !w.contains('=')) {
+                names.insert(word);
             }
         } else if !line.starts_with("> ") {
             // `> ` continues a command; every other line is output.
@@ -470,46 +479,69 @@ fn every_help_snapshot_names_a_visible_command() {
     for entry in std::fs::read_dir(snapshot_dir()).unwrap() {
         have.insert(entry.unwrap().file_name().to_string_lossy().into_owned());
     }
-    assert_eq!(have, wanted);
+    assert_eq!(
+        have, wanted,
+        "tests/snapshots/help/ must hold one file per visible command: delete a stale file, \
+         and write a missing one with `SNAPSHOTS=overwrite cargo test --test docs`"
+    );
 }
 
-/// The `diataxis = { version = ..., features = [...] }` lines of every
-/// `toml` fence in a page.
-fn dependency_lines(page: &str) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut in_toml = false;
+/// The body of every `toml` fence in a page.
+fn toml_fences(page: &str) -> Vec<String> {
+    let mut fences = Vec::new();
+    let mut open: Option<String> = None;
     for line in page.lines() {
         if line.starts_with("```") {
-            in_toml = !in_toml && line.trim_start_matches('`').starts_with("toml");
+            match open.take() {
+                Some(body) => fences.push(body),
+                None if line.trim_start_matches('`').starts_with("toml") => {
+                    open = Some(String::new());
+                }
+                None => {}
+            }
             continue;
         }
-        if in_toml && line.starts_with("diataxis = ") {
-            lines.push(line.to_string());
+        if let Some(body) = open.as_mut() {
+            body.push_str(line);
+            body.push('\n');
         }
     }
-    lines
+    fences
 }
 
-/// The values of the `features = [...]` list in one dependency line.
-fn features_of(line: &str) -> Vec<String> {
-    let start = line.find("features = [").expect("a features list") + "features = [".len();
-    let end = start + line[start..].find(']').unwrap();
-    line[start..end]
-        .split(',')
-        .map(|f| f.trim().trim_matches('"').to_string())
-        .filter(|f| !f.is_empty())
-        .collect()
+/// Every `diataxis` dependency a TOML fence declares, in any of the three
+/// dependency tables, inline or as its own table. A fence that does not
+/// parse, or that names diataxis outside those tables, panics.
+fn diataxis_dependencies(page: &str, fence: &str) -> Vec<(String, toml_edit::Item)> {
+    let doc: toml_edit::DocumentMut = fence
+        .parse()
+        .unwrap_or_else(|e| panic!("{page}: a toml fence does not parse: {e}\n{fence}"));
+    let found: Vec<(String, toml_edit::Item)> =
+        ["dependencies", "build-dependencies", "dev-dependencies"]
+            .into_iter()
+            .filter_map(|table| {
+                let item = doc.get(table)?.get("diataxis")?;
+                Some((table.to_string(), item.clone()))
+            })
+            .collect();
+    assert!(
+        !fence.contains("diataxis") || !found.is_empty(),
+        "{page}: a toml fence names diataxis outside a dependency table:\n{fence}"
+    );
+    found
 }
 
-/// The dependency lines the README and the adoption guide show name this
-/// crate's version and features that exist. No command prints them, and
-/// cargo reads a feature name that does not exist as an error only in a
-/// consumer's build.
+/// The dependency examples the README and the adoption guide show name
+/// this crate's version, turn the default features off, and name features
+/// that exist. No command prints them, and cargo reads a feature name
+/// that does not exist as an error only in a consumer's build.
 #[test]
 fn the_dependency_examples_name_this_version_and_real_features() {
-    let manifest = std::fs::read_to_string(root().join("Cargo.toml")).unwrap();
-    let features_table = &manifest[manifest.find("\n[features]\n").unwrap()..];
-    let features_table = &features_table[..features_table[1..].find("\n[").unwrap() + 1];
+    let manifest: toml_edit::DocumentMut = std::fs::read_to_string(root().join("Cargo.toml"))
+        .unwrap()
+        .parse()
+        .unwrap();
+    let features = manifest["features"].as_table_like().unwrap();
     let version = env!("CARGO_PKG_VERSION");
     let minor = version.rsplit_once('.').unwrap().0;
     let mut seen = 0;
@@ -518,25 +550,58 @@ fn the_dependency_examples_name_this_version_and_real_features() {
         "docs/how-to-adopt-diataxis-in-an-existing-project.md",
     ] {
         let text = std::fs::read_to_string(root().join(page)).unwrap();
-        for line in dependency_lines(&text) {
-            seen += 1;
-            assert!(
-                line.contains(&format!("version = \"{minor}\"")),
-                "{page}: `{line}` does not name version {minor}"
-            );
-            assert!(
-                line.contains("default-features = false"),
-                "{page}: `{line}`"
-            );
-            for feature in features_of(&line) {
-                assert!(
-                    features_table.contains(&format!("\n{feature} = [")),
-                    "{page}: `{line}` names feature {feature}, which Cargo.toml lacks"
+        for fence in toml_fences(&text) {
+            for (table, item) in diataxis_dependencies(page, &fence) {
+                seen += 1;
+                let dep = item
+                    .as_table_like()
+                    .unwrap_or_else(|| panic!("{page}: [{table}] diataxis is not a table"));
+                assert_eq!(
+                    dep.get("version").and_then(|v| v.as_str()),
+                    Some(minor),
+                    "{page}: [{table}] diataxis must name version \"{minor}\""
                 );
+                assert_eq!(
+                    dep.get("default-features").and_then(|v| v.as_bool()),
+                    Some(false),
+                    "{page}: [{table}] diataxis must set default-features = false, \
+                     or a consumer compiles the whole CLI"
+                );
+                let named = dep
+                    .get("features")
+                    .and_then(|v| v.as_array())
+                    .unwrap_or_else(|| panic!("{page}: [{table}] diataxis names no features"));
+                for feature in named {
+                    let feature = feature.as_str().unwrap();
+                    assert!(
+                        features.contains_key(feature),
+                        "{page}: [{table}] diataxis names feature {feature}, which Cargo.toml lacks"
+                    );
+                }
             }
         }
     }
-    assert!(seen >= 4, "found {seen} dependency lines");
+    assert!(seen >= 5, "found {seen} diataxis dependencies");
+}
+
+/// A dependency written as its own table is read, and a feature it names
+/// that does not exist would be caught.
+#[test]
+fn a_table_form_dependency_is_read() {
+    let page = "```toml\n[dependencies.diataxis]\nversion = \"0.2\"\nfeatures = [\"nope\"]\n```\n";
+    let fences = toml_fences(page);
+    assert_eq!(fences.len(), 1);
+    let found = diataxis_dependencies("p.md", &fences[0]);
+    assert_eq!(found.len(), 1);
+    let features = found[0].1["features"].as_array().unwrap();
+    assert_eq!(features.get(0).and_then(|f| f.as_str()), Some("nope"));
+}
+
+#[test]
+#[should_panic(expected = "outside a dependency table")]
+fn a_diataxis_dependency_in_an_unread_table_is_refused() {
+    let fence = "[target.'cfg(unix)'.dependencies]\ndiataxis = \"0.2\"\n";
+    diataxis_dependencies("p.md", fence);
 }
 
 /// One wrong page among right ones fails the run, and the failure names
@@ -804,6 +869,55 @@ fn commands_lists_what_trycmd_runs() {
     let page = "```sh\nls\n```\n\n````markdown\n```console\n$ inner\n```\n````\n\n```console\n$ A=1 diataxis check\n\n$ cat out.txt\nok\n```\n\n```\n$ bare\n```\n\n```trycmd\n$ tagged\n```\n";
     let names: Vec<String> = commands(Path::new("p.md"), page).into_iter().collect();
     assert_eq!(names, ["bare", "cat", "diataxis", "tagged"]);
+}
+
+/// The `--root` and `--home` help names the commands that ignore
+/// `--root` and refuse `--home`. Each claim holds against the binary,
+/// run outside any set with a scratch user config.
+#[test]
+fn the_root_and_home_help_holds() {
+    let (_guard, scratch) = scratch();
+    let config = scratch.join("config.yml");
+    let run = |args: &[&str]| {
+        Command::new(BIN)
+            .arg("--user-config")
+            .arg(&config)
+            .args(args)
+            .current_dir(&scratch)
+            .env_clear()
+            .env("HOME", &scratch)
+            .env("NO_COLOR", "1")
+            .output()
+            .unwrap()
+    };
+    let rootless: [&[&str]; 4] = [&["prime"], &["docs"], &["store", "root"], &["compass"]];
+    for args in rootless {
+        let ignored = run(&[&["--root", "/no-such-set"], args].concat());
+        assert!(ignored.status.success(), "{args:?} does not ignore --root");
+        let refused = run(&[&["--home"], args].concat());
+        assert!(!refused.status.success(), "{args:?} accepts --home");
+        assert!(
+            String::from_utf8_lossy(&refused.stderr).contains("--home does not apply"),
+            "{args:?}"
+        );
+    }
+    let init = run(&["--home", "init"]);
+    assert!(!init.status.success(), "init accepts --home");
+    assert!(!scratch.join("diataxis.yml").exists());
+    let write = run(&["page", "create", "A", "-T", "tutorial"]);
+    assert!(!write.status.success(), "a write outside any set succeeded");
+}
+
+/// A quoted command word is the program trycmd runs, without its quotes.
+#[test]
+fn a_quoted_command_word_names_its_program() {
+    let names: Vec<String> = commands(
+        Path::new("p.md"),
+        "```console\n$ \"diataxis\" check\n\n$ 'cat' a\n```\n",
+    )
+    .into_iter()
+    .collect();
+    assert_eq!(names, ["cat", "diataxis"]);
 }
 
 /// A fence closes only at its own backticks, so a shorter fence inside a

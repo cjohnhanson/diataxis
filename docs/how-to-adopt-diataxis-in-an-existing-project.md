@@ -33,8 +33,8 @@ Error:   x 1 fault(s)
 
 ```
 
-A page with no type, or with a type that is not one of the four, comes
-back as a fault. `page edit` does not reach such a file. Every command
+A page with no type, or with a type that is not one of the four or an
+alias `page create --help` lists, comes back as a fault. `page edit` does not reach such a file. Every command
 that reads a page reads its type first, so a file with no type is not
 yet a page to them:
 
@@ -138,8 +138,8 @@ fn docs(args: &[String]) -> diataxis::Result<()> {
 
 The hand-written table stated the title and the description that each
 page already states, so the two could disagree. Remove it, along with
-`list`, `show`, `search`, `find`, `find_in`, `format_list`,
-`format_list_from_refs`, and `find_matching`.
+every function that reads it: the listing, the lookup of one page, and
+the search. `DocSet` does each of those now.
 
 ## Check what a reader gets
 

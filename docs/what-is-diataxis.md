@@ -14,7 +14,7 @@ reference, or explanation. Every command reads that field.
 
 The four types come from Daniele Procida's Diátaxis framework. Two
 questions separate them. Does a page inform action or cognition? Does it
-serve a reader acquiring skill, or one applying it. Four answers, four
+serve a reader acquiring skill, or one applying it? Four answers, four
 forms, and the framework claims no fifth territory exists.
 
 A documentation set that keeps the four apart serves each reader. A set

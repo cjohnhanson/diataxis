@@ -33,6 +33,7 @@ takes the `store` feature and needs neither the command nor its
 dependencies:
 
 ```toml
+[dependencies]
 diataxis = { version = "0.2", default-features = false, features = ["store"] }
 ```
 
@@ -74,15 +75,15 @@ how-to-rotate-a-key:1  how-to  Run acme rotate, then restart.
 
 `map` shows the four quadrants and the pages in each. `export --out
 <DIR>` writes the pages as front-matter Markdown for a site generator.
-`store list`, `store sync`, and `store root` manage the sets this set
-reads. `docs` prints the bundled documentation, and
+`store list` and `store sync` show and fetch the sets this set reads, and
+`store root` sets the set a read falls back to outside any set. `docs` prints the bundled documentation, and
 [the CLI reference](docs/cli-reference.md) lists every command.
 
 ## The four types
 
 Diátaxis identifies four reader needs and one form for each. Two
 questions separate them. Does a page inform **action** or **cognition**?
-Does it serve a reader **acquiring** skill, or one **applying** it.
+Does it serve a reader **acquiring** skill, or one **applying** it?
 
 | | acquisition | application |
 |---|---|---|
@@ -121,7 +122,9 @@ docs_dir: docs
 title: acme
 ```
 
-A page is a markdown document whose frontmatter declares a type:
+A page is a markdown document whose frontmatter declares a type. Saved
+as `docs/how-to-rotate-the-signing-key.md`, this one is a page that
+`page show` finds by a prefix of its id:
 
 ```markdown {filename="docs/how-to-rotate-the-signing-key.md"}
 <!-- metadata
@@ -178,8 +181,9 @@ stores:
     path: ../team-docs
 ```
 
-A page then writes `[[shared:onboarding]]`. `store list` shows every set
-in the closure with its page count:
+Here `../team-docs` is another set, made with `diataxis init`, that holds
+a page `onboarding`. A page then writes `[[shared:onboarding]]`. `store
+list` shows every set in the closure with its page count:
 
 ```console
 $ diataxis store list

@@ -34,9 +34,10 @@ has the procedure. As a contributor from outside, open the pull request
 and stop there. The maintainer runs the reviews on its head commit and
 writes the note.
 
-A second workflow, `docs`, runs on every pull request and every push to
-`main`. It runs the checks described under [Docs tests](#docs-tests).
-Pushes to `main` also check web links.
+`cargo test` in `gate` runs the docs tests described under
+[Docs tests](#docs-tests). A second workflow, `docs`, runs on every pull
+request and every push to `main`. It runs the family checks listed at
+the end of that section. Pushes to `main` also check web links.
 
 ## Docs tests
 

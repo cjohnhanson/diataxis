@@ -109,7 +109,7 @@ explanation  informs cognition, serves acquisition of skill — 0 page(s)
 ```
 
 Two quadrants hold pages and two are empty. That is what the map is
-for: a list of six pages hides a gap, and a grid shows it.
+for: a list of pages hides a gap, and a grid shows it.
 
 ## Check the set
 
