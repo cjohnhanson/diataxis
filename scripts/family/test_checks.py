@@ -403,6 +403,57 @@ class FenceGuards(unittest.TestCase):
         self.assertEqual(self.count("~~~markdown\n```\n$ echo hi\n```\n~~~\n"), 1)
 
 
+class MoreGuards(unittest.TestCase):
+    def count(self, text):
+        return len(fences.check(write(text)))
+
+    def test_h1_named_installation_exempts_nothing(self):
+        self.assertEqual(self.count("# Installation\n\n```sh\ntundish pull\n```\n"), 1)
+
+    def test_fence_opened_on_the_last_line_is_unclosed(self):
+        self.assertEqual(self.count("text\n\n```sh"), 1)
+
+    def test_windows_powershell_prompt_is_read(self):
+        self.assertEqual(self.count("```text\nPS C:\\> tundish pull\n```\n"), 1)
+
+    def test_three_words_are_not_a_version_line(self):
+        self.assertEqual(self.count("```text\ntundish 2 pull\n```\n"), 1)
+
+    def test_empty_tool_name_is_a_usage_error(self):
+        self.assertEqual(fences.main(["--tool", "", write("x\n")]), 2)
+
+    def test_two_console_blocks_in_one_file_pass(self):
+        text = "```console\n$ tundish a\n```\n\nx\n\n```console\n$ tundish b\n```\n"
+        self.assertEqual(self.count(text), 0)
+
+    def test_trailing_shell_comment_naming_a_tool_passes(self):
+        self.assertEqual(self.count("```sh\ncargo build  # then run tundish\n```\n"), 0)
+
+    def test_comment_line_with_a_pipe_naming_a_tool_passes(self):
+        self.assertEqual(
+            self.count("```sh\n# pipe it: echo x | tundish pull\n```\n"), 0
+        )
+
+    def test_more_install_forms_pass(self):
+        for line in (
+            "pip3 install tundish",
+            "apt-get install tundish",
+            "npm i -g tundish",
+            "nix profile add github:x/tundish",
+        ):
+            self.assertEqual(self.count(f"```sh\n{line}\n```\n"), 0, line)
+
+    def test_list_fence_message_names_the_list(self):
+        found = fences.check(write("- step\n\n  ```console\n  $ tundish\n  ```\n"))
+        self.assertIn("inside a list or quote", found[0])
+
+
+class ReadmeLevels(unittest.TestCase):
+    def test_subheading_under_license_passes(self):
+        text = Readme.GOOD + "\n### Third-party notices\n\nx\n"
+        self.assertEqual(readme.check("tundish", write(text)), [])
+
+
 def trycmd_runs(text):
     return [index for index, _, _ in fences.trycmd_blocks(text.split("\n"))]
 
@@ -413,10 +464,10 @@ class FencesCli(unittest.TestCase):
         self.assertEqual(fences.main([write("```sh\ntundish pull\n```\n")]), 1)
 
     def test_tool_option_adds_a_name(self):
+        self.addCleanup(fences.TOOLS.discard, "ringer")
         path = write("```sh\nringer sync --all\n```\n")
         self.assertEqual(fences.main([path]), 0)
         self.assertEqual(fences.main(["--tool", "ringer", path]), 1)
-        fences.TOOLS.discard("ringer")
 
     def test_comma_info_string_does_not_crash(self):
         self.assertEqual(fences.main([write("``` ,ignore\nx\n```\n")]), 1)
