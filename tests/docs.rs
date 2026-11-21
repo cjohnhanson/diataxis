@@ -529,6 +529,14 @@ fn a_toml_fence_closes_at_its_own_backticks() {
     assert_eq!(toml_fences("p.md", page), ["[dependencies]\n```\n"]);
 }
 
+/// A `~~~` fence is refused, naming the page, since this reader would
+/// otherwise skip a dependency example inside one.
+#[test]
+#[should_panic(expected = "p.md: a `~~~` fence: use backticks")]
+fn a_tilde_fence_is_refused() {
+    toml_fences("p.md", "~~~toml\n[dependencies]\n~~~\n");
+}
+
 /// Every key named `diataxis` in a TOML fence, at any depth, with its
 /// dotted path: inline, as its own table, under a target table, or as a
 /// dotted key. Each one is checked, so no form or table escapes. A fence
