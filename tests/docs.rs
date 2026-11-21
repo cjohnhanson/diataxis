@@ -490,7 +490,7 @@ fn every_help_snapshot_names_a_visible_command() {
 /// line starting with its own opening backticks, as in `run_lines`. A
 /// `~~~` fence panics: the docs use backtick fences only, and one that
 /// this reader skipped would escape the check.
-fn toml_fences(page: &str) -> Vec<String> {
+fn toml_fences(name: &str, page: &str) -> Vec<String> {
     let mut fences = Vec::new();
     // The open fence: its backticks, whether it is toml, and its body.
     let mut open: Option<(&str, bool, String)> = None;
@@ -509,7 +509,7 @@ fn toml_fences(page: &str) -> Vec<String> {
         }
         assert!(
             !line.starts_with("~~~"),
-            "a `~~~` fence: use backticks\n{line}"
+            "{name}: a `~~~` fence: use backticks\n{line}"
         );
         let ticks = line.len() - line.trim_start_matches('`').len();
         if ticks >= 3 {
@@ -526,37 +526,37 @@ fn toml_fences(page: &str) -> Vec<String> {
 #[test]
 fn a_toml_fence_closes_at_its_own_backticks() {
     let page = "````toml\n[dependencies]\n```\n````\n\n````markdown\n```toml\nx = 1\n```\n````\n";
-    assert_eq!(toml_fences(page), ["[dependencies]\n```\n"]);
+    assert_eq!(toml_fences("p.md", page), ["[dependencies]\n```\n"]);
 }
 
-/// Every `diataxis` dependency a TOML fence declares, in any of the three
-/// dependency tables, inline or as its own table. A fence that does not
-/// parse, or that names diataxis outside those tables, panics.
+/// Every key named `diataxis` in a TOML fence, at any depth, with its
+/// dotted path: inline, as its own table, under a target table, or as a
+/// dotted key. Each one is checked, so no form or table escapes. A fence
+/// that does not parse panics.
 fn diataxis_dependencies(page: &str, fence: &str) -> Vec<(String, toml_edit::Item)> {
+    fn walk(
+        table: &dyn toml_edit::TableLike,
+        path: &str,
+        out: &mut Vec<(String, toml_edit::Item)>,
+    ) {
+        for (key, item) in table.iter() {
+            let here = if path.is_empty() {
+                key.to_string()
+            } else {
+                format!("{path}.{key}")
+            };
+            if key == "diataxis" {
+                out.push((here, item.clone()));
+            } else if let Some(inner) = item.as_table_like() {
+                walk(inner, &here, out);
+            }
+        }
+    }
     let doc: toml_edit::DocumentMut = fence
         .parse()
         .unwrap_or_else(|e| panic!("{page}: a toml fence does not parse: {e}\n{fence}"));
-    let found: Vec<(String, toml_edit::Item)> =
-        ["dependencies", "build-dependencies", "dev-dependencies"]
-            .into_iter()
-            .filter_map(|table| {
-                let item = doc.get(table)?.get("diataxis")?;
-                Some((table.to_string(), item.clone()))
-            })
-            .collect();
-    // Each declaration is a `diataxis = ...` key or a `[...diataxis]`
-    // header; one that the three tables do not hold would go unchecked.
-    let declared = fence
-        .lines()
-        .map(str::trim)
-        .filter(|l| {
-            l.starts_with("diataxis ") || l.starts_with("diataxis=") || l.ends_with(".diataxis]")
-        })
-        .count();
-    assert!(
-        declared == found.len() && (found.is_empty() != fence.contains("diataxis")),
-        "{page}: a toml fence names diataxis outside a dependency table:\n{fence}"
-    );
+    let mut found = Vec::new();
+    walk(doc.as_table(), "", &mut found);
     found
 }
 
@@ -579,32 +579,32 @@ fn the_dependency_examples_name_this_version_and_real_features() {
         "docs/how-to-adopt-diataxis-in-an-existing-project.md",
     ] {
         let text = std::fs::read_to_string(root().join(page)).unwrap();
-        for fence in toml_fences(&text) {
+        for fence in toml_fences(page, &text) {
             for (table, item) in diataxis_dependencies(page, &fence) {
                 seen += 1;
                 let dep = item
                     .as_table_like()
-                    .unwrap_or_else(|| panic!("{page}: [{table}] diataxis is not a table"));
+                    .unwrap_or_else(|| panic!("{page}: `{table}` is not a table"));
                 assert_eq!(
                     dep.get("version").and_then(|v| v.as_str()),
                     Some(minor),
-                    "{page}: [{table}] diataxis must name version \"{minor}\""
+                    "{page}: `{table}` must name version \"{minor}\""
                 );
                 assert_eq!(
                     dep.get("default-features").and_then(|v| v.as_bool()),
                     Some(false),
-                    "{page}: [{table}] diataxis must set default-features = false, \
+                    "{page}: `{table}` must set default-features = false, \
                      or a consumer compiles the whole CLI"
                 );
                 let named = dep
                     .get("features")
                     .and_then(|v| v.as_array())
-                    .unwrap_or_else(|| panic!("{page}: [{table}] diataxis names no features"));
+                    .unwrap_or_else(|| panic!("{page}: `{table}` names no features"));
                 for feature in named {
                     let feature = feature.as_str().unwrap();
                     assert!(
                         features.contains_key(feature),
-                        "{page}: [{table}] diataxis names feature {feature}, which Cargo.toml lacks"
+                        "{page}: `{table}` names feature {feature}, which Cargo.toml lacks"
                     );
                 }
             }
@@ -613,34 +613,28 @@ fn the_dependency_examples_name_this_version_and_real_features() {
     assert!(seen >= 5, "found {seen} diataxis dependencies");
 }
 
-/// A dependency written as its own table is read, and a feature it names
-/// that does not exist would be caught.
+/// Every form cargo accepts is found, whatever table holds it: inline,
+/// its own table (with a comment on the header), a target table, a dotted
+/// key, and a quoted key.
 #[test]
-fn a_table_form_dependency_is_read() {
-    let page = "```toml\n[dependencies.diataxis]\nversion = \"0.2\"\nfeatures = [\"nope\"]\n```\n";
-    let fences = toml_fences(page);
-    assert_eq!(fences.len(), 1);
-    let found = diataxis_dependencies("p.md", &fences[0]);
-    assert_eq!(found.len(), 1);
-    let features = found[0].1["features"].as_array().unwrap();
-    assert_eq!(features.get(0).and_then(|f| f.as_str()), Some("nope"));
-}
-
-#[test]
-#[should_panic(expected = "outside a dependency table")]
-fn a_diataxis_dependency_in_an_unread_table_is_refused() {
-    let fence = "[target.'cfg(unix)'.dependencies]\ndiataxis = \"0.2\"\n";
-    diataxis_dependencies("p.md", fence);
-}
-
-/// A second declaration in a table the test does not read is refused,
-/// even beside one it does read.
-#[test]
-#[should_panic(expected = "outside a dependency table")]
-fn a_second_dependency_in_an_unread_table_is_refused() {
-    let fence = "[dependencies]\ndiataxis = { version = \"0.2\" }\n\n\
-                 [target.'cfg(unix)'.dependencies]\ndiataxis = \"0.2\"\n";
-    diataxis_dependencies("p.md", fence);
+fn every_form_of_a_diataxis_dependency_is_found() {
+    let fence = "[dependencies]\n\"diataxis\" = { version = \"0.2\" }\n\n\
+                 [build-dependencies.diataxis] # the build helper\nversion = \"0.2\"\n\n\
+                 [target.'cfg(unix)'.dependencies]\ndiataxis = \"0.1\"\n\n\
+                 [dev-dependencies]\ndiataxis.version = \"0.2\"\n";
+    let paths: Vec<String> = diataxis_dependencies("p.md", fence)
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "dependencies.diataxis",
+            "build-dependencies.diataxis",
+            "target.cfg(unix).dependencies.diataxis",
+            "dev-dependencies.diataxis",
+        ]
+    );
 }
 
 /// One wrong page among right ones fails the run, and the failure names
@@ -954,9 +948,15 @@ fn the_root_and_home_help_holds() {
     assert!(stderr.contains("reading root set"), "{stderr}");
     let write = run(&["page", "create", "A", "-T", "tutorial"]);
     assert!(!write.status.success(), "a write outside any set succeeded");
+    // miette wraps the message at a point that moves with the scratch
+    // path's length, behind a `|` gutter, so join the words first.
     let stderr = String::from_utf8_lossy(&write.stderr);
-    // miette wraps the message, so match words that stay on one line.
-    assert!(stderr.contains("a write does not"), "{stderr}");
+    let joined = stderr
+        .split_whitespace()
+        .filter(|w| *w != "|")
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(joined.contains("a write does not fall back"), "{stderr}");
     assert!(!scratch.join("root/docs/a.md").exists());
 }
 
