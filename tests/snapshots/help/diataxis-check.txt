@@ -1,0 +1,39 @@
+Check the pages for type faults and broken links
+
+Faults print first. A fault is provable from the files:
+
+A Markdown file in the pages directory that is not a page.
+
+A how-to title that does not state a goal.
+
+A `[[reference]]` that names no page in this set.
+
+A relative `.md` link that names no file.
+
+A declared set that did not load.
+
+Advice is a gap that is not wrong on its own: a type with no pages. Exits non-zero when a fault is
+found. A reference inside code, or escaped as `\[[x]]`, is literal text. Nothing here judges
+prose.
+
+Usage: diataxis check [OPTIONS]
+
+Options:
+      --root <ROOT>
+          Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no
+          fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
+          
+          `init` writes diataxis.yml into this directory instead. `prime`, `docs`, `store root`,
+          and `compass` without a page ignore it.
+          
+          An empty value is refused.
+
+      --home
+          Act on the configured root set, wherever the command runs.
+          
+          Conflicts with `--root`. Without either, a read outside any set falls back to the
+          configured root set and names it on stderr, and a write outside any set fails. `init`,
+          `prime`, `docs`, `store root`, and `compass` without a page refuse `--home`.
+
+  -h, --help
+          Print help (see a summary with '-h')

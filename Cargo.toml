@@ -83,9 +83,20 @@ required-features = ["cli"]
 # fails when the committed page differs. A test-only dependency: the
 # shipped crate and its consumers never compile it.
 usage-lib = { version = "7", default-features = false, features = ["clap", "markdown"] }
+# tests/docs.rs runs every `console` block in README.md and docs/ against
+# the built binary (trycmd), and compares each command's `--help` with a
+# snapshot (snapbox), each page in a scratch directory (tempfile).
+# Test-only, like usage-lib.
+trycmd = "1.2"
+snapbox = "1.2"
+tempfile = "3"
 
 [[test]]
 name = "cli_reference"
+required-features = ["cli"]
+
+[[test]]
+name = "docs"
 required-features = ["cli"]
 
 # A released binary carries no debug symbols, and a user installing a

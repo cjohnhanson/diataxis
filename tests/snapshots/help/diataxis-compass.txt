@@ -1,0 +1,33 @@
+Show the two questions that name a page's type
+
+Prints the two questions and the table that turns a pair of answers into one type. Given a page,
+it prints that page's declared type alongside.
+
+The compass does not classify a page: classification needs a reader. Without a page, it resolves
+no set and runs from any directory.
+
+Usage: diataxis compass [OPTIONS] [PAGE]
+
+Arguments:
+  [PAGE]
+          A page to name alongside the questions
+
+Options:
+      --root <ROOT>
+          Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no
+          fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
+          
+          `init` writes diataxis.yml into this directory instead. `prime`, `docs`, `store root`,
+          and `compass` without a page ignore it.
+          
+          An empty value is refused.
+
+      --home
+          Act on the configured root set, wherever the command runs.
+          
+          Conflicts with `--root`. Without either, a read outside any set falls back to the
+          configured root set and names it on stderr, and a write outside any set fails. `init`,
+          `prime`, `docs`, `store root`, and `compass` without a page refuse `--home`.
+
+  -h, --help
+          Print help (see a summary with '-h')

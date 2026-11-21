@@ -19,13 +19,15 @@ top level only, as `diataxis --version`; a subcommand refuses them.
 
 Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
 
+`init` writes diataxis.yml into this directory instead. `prime`, `docs`, `store root`, and `compass` without a page ignore it.
+
 An empty value is refused.
 
 ### `--home`
 
 Act on the configured root set, wherever the command runs.
 
-Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr.
+Conflicts with `--root`. Without either, a read outside any set falls back to the configured root set and names it on stderr, and a write outside any set fails. `init`, `prime`, `docs`, `store root`, and `compass` without a page refuse `--home`.
 
 **Default:** `false`
 
@@ -45,7 +47,7 @@ Print version
 
 Initialize a documentation set in the current directory
 
-Writes `diataxis.yml` and makes the pages directory. An existing directory of pages is adopted, so a repository with docs already written runs `init` once and keeps every page.
+Writes `diataxis.yml` and makes the pages directory. An existing directory of pages is adopted, so a repository with docs already written runs `init` once and keeps every page. With `--root`, the set goes in that directory instead, which must exist.
 
 Fails when `diataxis.yml` exists.
 

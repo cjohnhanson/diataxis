@@ -1,0 +1,30 @@
+Search the pages
+
+Matches a regular expression against every page body, without regard to case. Prints the page id,
+the line number, the type, and the line.
+
+Usage: diataxis search [OPTIONS] <PATTERN>
+
+Arguments:
+  <PATTERN>
+          A regular expression, matched without regard to case
+
+Options:
+      --root <ROOT>
+          Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no
+          fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
+          
+          `init` writes diataxis.yml into this directory instead. `prime`, `docs`, `store root`,
+          and `compass` without a page ignore it.
+          
+          An empty value is refused.
+
+      --home
+          Act on the configured root set, wherever the command runs.
+          
+          Conflicts with `--root`. Without either, a read outside any set falls back to the
+          configured root set and names it on stderr, and a write outside any set fails. `init`,
+          `prime`, `docs`, `store root`, and `compass` without a page refuse `--home`.
+
+  -h, --help
+          Print help (see a summary with '-h')
