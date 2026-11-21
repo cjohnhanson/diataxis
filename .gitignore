@@ -1,5 +1,6 @@
 /target
 result
+__pycache__/
 
 # Coding-agent and editor local state. Machine-specific.
 /.claude/
