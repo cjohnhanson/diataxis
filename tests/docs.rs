@@ -326,10 +326,10 @@ fn commands(page: &Path, text: &str) -> std::collections::BTreeSet<String> {
     let mut names = std::collections::BTreeSet::new();
     for line in run_lines(page, text) {
         if let Some(cmd) = line.strip_prefix("$ ") {
-            // Split as trycmd does (shlex), so a quoted command word
-            // names the program trycmd runs.
-            let words = shlex::split(cmd).unwrap_or_default();
-            if let Some(word) = words.into_iter().find(|w| !w.contains('=')) {
+            // Split with the call trycmd 1.2 makes (`Shlex::new(raw.trim())`
+            // in its schema.rs), which keeps the words before an unclosed
+            // quote, so the command word is the program trycmd runs.
+            if let Some(word) = shlex::Shlex::new(cmd.trim()).find(|w| !w.contains('=')) {
                 names.insert(word);
             }
         } else if !line.starts_with("> ") {
@@ -486,27 +486,47 @@ fn every_help_snapshot_names_a_visible_command() {
     );
 }
 
-/// The body of every `toml` fence in a page.
+/// The body of every `toml` fence in a page. A fence closes only at a
+/// line starting with its own opening backticks, as in `run_lines`. A
+/// `~~~` fence panics: the docs use backtick fences only, and one that
+/// this reader skipped would escape the check.
 fn toml_fences(page: &str) -> Vec<String> {
     let mut fences = Vec::new();
-    let mut open: Option<String> = None;
+    // The open fence: its backticks, whether it is toml, and its body.
+    let mut open: Option<(&str, bool, String)> = None;
     for line in page.lines() {
-        if line.starts_with("```") {
-            match open.take() {
-                Some(body) => fences.push(body),
-                None if line.trim_start_matches('`').starts_with("toml") => {
-                    open = Some(String::new());
+        if let Some((marker, is_toml, body)) = open.as_mut() {
+            if line.starts_with(*marker) {
+                if *is_toml {
+                    fences.push(std::mem::take(body));
                 }
-                None => {}
+                open = None;
+            } else {
+                body.push_str(line);
+                body.push('\n');
             }
             continue;
         }
-        if let Some(body) = open.as_mut() {
-            body.push_str(line);
-            body.push('\n');
+        assert!(
+            !line.starts_with("~~~"),
+            "a `~~~` fence: use backticks\n{line}"
+        );
+        let ticks = line.len() - line.trim_start_matches('`').len();
+        if ticks >= 3 {
+            let is_toml = line[ticks..].trim_start().starts_with("toml");
+            open = Some((&line[..ticks], is_toml, String::new()));
         }
     }
     fences
+}
+
+/// A toml fence closes at its own backticks, so a shorter fence inside a
+/// longer one is part of its body, and a toml fence inside a longer
+/// non-toml fence is not read.
+#[test]
+fn a_toml_fence_closes_at_its_own_backticks() {
+    let page = "````toml\n[dependencies]\n```\n````\n\n````markdown\n```toml\nx = 1\n```\n````\n";
+    assert_eq!(toml_fences(page), ["[dependencies]\n```\n"]);
 }
 
 /// Every `diataxis` dependency a TOML fence declares, in any of the three
@@ -524,8 +544,17 @@ fn diataxis_dependencies(page: &str, fence: &str) -> Vec<(String, toml_edit::Ite
                 Some((table.to_string(), item.clone()))
             })
             .collect();
+    // Each declaration is a `diataxis = ...` key or a `[...diataxis]`
+    // header; one that the three tables do not hold would go unchecked.
+    let declared = fence
+        .lines()
+        .map(str::trim)
+        .filter(|l| {
+            l.starts_with("diataxis ") || l.starts_with("diataxis=") || l.ends_with(".diataxis]")
+        })
+        .count();
     assert!(
-        !fence.contains("diataxis") || !found.is_empty(),
+        declared == found.len() && (found.is_empty() != fence.contains("diataxis")),
         "{page}: a toml fence names diataxis outside a dependency table:\n{fence}"
     );
     found
@@ -601,6 +630,16 @@ fn a_table_form_dependency_is_read() {
 #[should_panic(expected = "outside a dependency table")]
 fn a_diataxis_dependency_in_an_unread_table_is_refused() {
     let fence = "[target.'cfg(unix)'.dependencies]\ndiataxis = \"0.2\"\n";
+    diataxis_dependencies("p.md", fence);
+}
+
+/// A second declaration in a table the test does not read is refused,
+/// even beside one it does read.
+#[test]
+#[should_panic(expected = "outside a dependency table")]
+fn a_second_dependency_in_an_unread_table_is_refused() {
+    let fence = "[dependencies]\ndiataxis = { version = \"0.2\" }\n\n\
+                 [target.'cfg(unix)'.dependencies]\ndiataxis = \"0.2\"\n";
     diataxis_dependencies("p.md", fence);
 }
 
@@ -904,8 +943,21 @@ fn the_root_and_home_help_holds() {
     let init = run(&["--home", "init"]);
     assert!(!init.status.success(), "init accepts --home");
     assert!(!scratch.join("diataxis.yml").exists());
+    // With a root set configured, a read outside any set falls back to it
+    // and names it on stderr, and a write does not fall back.
+    std::fs::create_dir(scratch.join("root")).unwrap();
+    assert!(run(&["--root", "root", "init"]).status.success());
+    assert!(run(&["store", "root", "root"]).status.success());
+    let read = run(&["map"]);
+    assert!(read.status.success(), "a read did not fall back");
+    let stderr = String::from_utf8_lossy(&read.stderr);
+    assert!(stderr.contains("reading root set"), "{stderr}");
     let write = run(&["page", "create", "A", "-T", "tutorial"]);
     assert!(!write.status.success(), "a write outside any set succeeded");
+    let stderr = String::from_utf8_lossy(&write.stderr);
+    // miette wraps the message, so match words that stay on one line.
+    assert!(stderr.contains("a write does not"), "{stderr}");
+    assert!(!scratch.join("root/docs/a.md").exists());
 }
 
 /// A quoted command word is the program trycmd runs, without its quotes.
@@ -914,6 +966,19 @@ fn a_quoted_command_word_names_its_program() {
     let names: Vec<String> = commands(
         Path::new("p.md"),
         "```console\n$ \"diataxis\" check\n\n$ 'cat' a\n```\n",
+    )
+    .into_iter()
+    .collect();
+    assert_eq!(names, ["cat", "diataxis"]);
+}
+
+/// An unclosed quote still names the command, as trycmd still runs it, so
+/// the command is registered rather than skipped or run unwrapped.
+#[test]
+fn a_line_with_an_unclosed_quote_still_names_its_command() {
+    let names: Vec<String> = commands(
+        Path::new("p.md"),
+        "```console\n$ cat 'notes.txt\n\n$ diataxis search 'a b\n```\n",
     )
     .into_iter()
     .collect();
