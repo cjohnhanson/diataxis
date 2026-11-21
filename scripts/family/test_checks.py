@@ -267,6 +267,45 @@ class Readme(unittest.TestCase):
     def test_missing_intro_fails(self):
         self.assertEqual(len(self.findings(self.GOOD.replace("A local inbox.", ""))), 1)
 
+    def test_setext_second_h1_fails(self):
+        text = self.GOOD.replace("Install it.", "Another\n=======")
+        self.assertEqual(len(self.findings(text)), 1)
+
+    def test_h1_in_an_html_comment_passes(self):
+        text = self.GOOD.replace("Install it.", "<!--\n# draft\n-->")
+        self.assertEqual(self.findings(text), [])
+
+    def test_setext_license_passes(self):
+        self.assertEqual(
+            self.findings(self.GOOD.replace("## License", "License\n-------")), []
+        )
+
+    def test_indented_section_after_license_fails(self):
+        self.assertEqual(len(self.findings(self.GOOD + "\n ## Usage\n\nx\n")), 1)
+
+    def test_code_span_title_passes(self):
+        self.assertEqual(
+            self.findings(self.GOOD.replace("# tundish", "# `tundish`")), []
+        )
+
+    def test_unreadable_file_exits_2(self):
+        self.assertEqual(readme.main(["tundish", "/nonexistent/README.md"]), 2)
+
+
+class FencesCli(unittest.TestCase):
+    def test_tool_option_adds_a_name(self):
+        path = write("```sh\nringer sync --all\n```\n")
+        self.assertEqual(fences.main([path]), 0)
+        self.assertEqual(fences.main(["--tool", "ringer", path]), 1)
+        fences.TOOLS.discard("ringer")
+
+    def test_comma_info_string_does_not_crash(self):
+        self.assertEqual(fences.main([write("``` ,ignore\nx\n```\n")]), 1)
+
+    def test_no_files_and_missing_files_exit_2(self):
+        self.assertEqual(fences.main([]), 2)
+        self.assertEqual(fences.main(["/nonexistent.md"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

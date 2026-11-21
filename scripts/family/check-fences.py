@@ -5,7 +5,11 @@
 # ///
 """Fail a tool command that a docs test cannot run.
 
-    uv run check-fences.py FILE...
+    uv run check-fences.py [--tool NAME]... FILE...
+
+The family tools are the names in TOOLS below: the eng.rip tools and
+gaff's short name, gaffr. `--tool` adds a name, so a tool that calls the
+family workflow is checked whether or not TOOLS lists it.
 
 Each tool repository runs its README and docs pages through trycmd in
 `cargo test`. trycmd runs a block that opens with backticks at column 0
@@ -28,8 +32,12 @@ examples the same set:
    fence or an indented code block, a line that starts with a tool name
    and is not a synopsis (`<placeholder>`, `[option]`) or a version line.
    Config languages such as YAML and TOML name tools without running them.
+   A command that installs or locates a tool, a heredoc body, and a `#`
+   comment in a shell fence pass. The section is the nearest level-2
+   heading.
 
-Exit status 1 on any finding, with one `file:line: message` per finding.
+Exit status 1 on any finding, with one `file:line: message` per finding;
+2 on a usage error or a file that cannot be read.
 """
 
 import os
@@ -219,7 +227,8 @@ def check(path):
                     )
             continue
         info = token.info.strip()
-        lang = info.split(",")[0].split()[0].lower() if info else ""
+        head = info.split(",")[0].split()
+        lang = head[0].lower() if head else ""
         opening = lines[first]
         top = token.level == 0 and opening.startswith("```")
         body = token.content.splitlines()
@@ -230,7 +239,7 @@ def check(path):
         )
         if not closed:
             findings.append((first, "fence is never closed"))
-        if not info:
+        if not lang:
             findings.append((first, "fence has no language; trycmd runs it as a test"))
         elif lang in ("console", "trycmd"):
             if first in runs and runs[first][1]:
@@ -240,16 +249,33 @@ def check(path):
                         f"`{info}` hides its commands from the docs test; use ```console",
                     )
                 )
-            elif info != "console" or not top or first not in runs:
+            elif info != "console":
                 findings.append(
                     (
                         first,
-                        "trycmd runs only ```console fences at column 0, outside lists and quotes, with no other words",
+                        f"trycmd does not run a `{info}` fence; write ```console with no other words",
+                    )
+                )
+            elif token.level > 0:
+                findings.append(
+                    (
+                        first,
+                        "trycmd does not run a fence inside a list or quote; move it to the top level",
+                    )
+                )
+            elif not top or first not in runs:
+                findings.append(
+                    (
+                        first,
+                        "trycmd does not run this fence; open it with ``` at column 0",
                     )
                 )
             elif body and not body[0].startswith("$ "):
                 findings.append(
-                    (first + 1, "a `console` block starts with a `$ ` command line")
+                    (
+                        first + 1,
+                        "this `console` block does not start with a `$ ` command line",
+                    )
                 )
             seen.add(first)
         elif not install:
@@ -273,8 +299,31 @@ def check(path):
     return [f"{path}:{index + 1}: {message}" for index, message in sorted(findings)]
 
 
-def main(paths):
-    findings = [finding for path in paths for finding in check(path)]
+def main(argv):
+    paths = []
+    args = iter(argv)
+    for arg in args:
+        if arg == "--tool":
+            name = next(args, "")
+            if not name:
+                print("--tool needs a name", file=sys.stderr)
+                return 2
+            TOOLS.add(name)
+        elif arg in ("-h", "--help"):
+            print(__doc__.strip())
+            return 0
+        else:
+            paths.append(arg)
+    if not paths:
+        print("usage: check-fences.py [--tool NAME]... FILE...", file=sys.stderr)
+        return 2
+    findings = []
+    for path in paths:
+        try:
+            findings.extend(check(path))
+        except OSError as error:
+            print(f"{path}: cannot read: {error.strerror}", file=sys.stderr)
+            return 2
     for finding in findings:
         print(finding)
     return 1 if findings else 0
