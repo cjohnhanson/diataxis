@@ -1,0 +1,91 @@
+# The docs checks every family tool shares, called from each tool's CI:
+#
+#   jobs:
+#     family:
+#       uses: cjohnhanson/diataxis/.github/workflows/family-checks.yml@main
+#       with:
+#         tool: tundish
+#
+# A called workflow cannot read its own ref, so the scripts come from the
+# `ref` input. A caller that pins `uses:` to a tag or sha passes the same
+# value as `ref`.
+#
+# The checks read the calling repository's README.md and docs/*.md:
+# - the docs test exists (each tool runs its examples in `cargo test`);
+# - fences (scripts/family/check-fences.py): every tool command sits in a
+#   block that docs test runs;
+# - README shape (scripts/family/check-readme.py);
+# - spelling, with typos, over README.md and docs/ (code identifiers are
+#   out of its scope);
+# - links: internal links only on a pull request or in a merge queue, so a
+#   remote site that is down cannot block a merge; every link otherwise.
+# Each check runs even when an earlier one fails.
+name: family checks
+on:
+  workflow_call:
+    inputs:
+      tool:
+        description: The tool's command name, which its README title names.
+        required: true
+        type: string
+      ref:
+        description: The diataxis ref whose scripts run. Keep it equal to the ref in `uses:`.
+        required: false
+        type: string
+        default: main
+      docs-test:
+        description: The test file that runs the docs examples.
+        required: false
+        type: string
+        default: tests/docs.rs
+permissions:
+  contents: read
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      TOOL: ${{ inputs.tool }}
+      DOCS_TEST: ${{ inputs.docs-test }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cjohnhanson/diataxis
+          ref: ${{ inputs.ref }}
+          path: .family
+          sparse-checkout: scripts/family
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: docs test
+        run: |
+          grep -q trycmd "$DOCS_TEST" || {
+            echo "$DOCS_TEST is missing or does not run the docs with trycmd" >&2
+            exit 1
+          }
+      - name: fences
+        if: ${{ !cancelled() }}
+        run: |
+          dirs=README.md
+          [ -d docs ] && dirs="$dirs docs"
+          find $dirs -name '*.md' -print0 | xargs -0 uv run --script .family/scripts/family/check-fences.py
+      - name: README shape
+        if: ${{ !cancelled() }}
+        run: python3 .family/scripts/family/check-readme.py "$TOOL" README.md
+      - name: spelling
+        if: ${{ !cancelled() }}
+        uses: crate-ci/typos@276087d9a4f06398b3e04825487805e2d7375888 # v1.52.2
+        with:
+          files: README.md docs
+      - name: internal links
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --offline --include-fragments --no-progress README.md 'docs/**/*.md'
+          fail: true
+          failIfEmpty: false
+      - name: all links
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --include-fragments --no-progress README.md 'docs/**/*.md'
+          fail: true
+          failIfEmpty: false
