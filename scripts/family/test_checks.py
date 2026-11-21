@@ -3,7 +3,9 @@
 Run: uv run --with markdown-it-py==4.2.0 python -m unittest discover scripts/family
 """
 
+import contextlib
 import importlib.util
+import io
 import pathlib
 import tempfile
 import textwrap
@@ -460,7 +462,27 @@ class Unreadable(unittest.TestCase):
         self.assertEqual(readme.main(["t", self.bad()]), 2)
 
     def test_unknown_option_exits_2(self):
-        self.assertEqual(fences.main(["--bogus", write("x\n")]), 2)
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(fences.main(["--bogus", write("x\n")]), 2)
+        self.assertIn("unknown option --bogus", stderr.getvalue())
+
+    def test_readme_short_help_and_extra_arguments(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(readme.main(["-h"]), 0)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(readme.main(["tundish", "a.md", "b.md"]), 2)
+
+    def test_readme_swapped_arguments_exit_2(self):
+        self.assertEqual(readme.main(["README.md"]), 2)
+
+    def test_readme_unknown_option_exits_2(self):
+        self.assertEqual(readme.main(["--foo"]), 2)
+        self.assertEqual(readme.main(["--tool", "tundish"]), 2)
+
+    def test_title_ending_in_a_period_names_the_tool(self):
+        text = Readme.GOOD.replace("# tundish", "# tundish.")
+        self.assertEqual(readme.check("tundish", write(text)), [])
 
     def test_readme_help_exits_0(self):
         self.assertEqual(readme.main(["--help"]), 0)

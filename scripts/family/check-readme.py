@@ -63,7 +63,9 @@ def check(tool, path):
                 f"the README does not open with a level-1 heading; start it with `# {tool}`",
             )
         )
-    elif tool not in re.findall(r"[\w.-]+", headings[0][2]):
+    elif tool not in [
+        word.strip(".-") for word in re.findall(r"[\w.-]+", headings[0][2])
+    ]:
         findings.append(
             (headings[0][0], f"the title does not name {tool}; write `# {tool}`")
         )
@@ -92,14 +94,19 @@ def check(tool, path):
         findings.append(
             (sections[-1][0] if sections else 1, "the last section is not `## License`")
         )
-    return [f"{path}:{line}: {message}" for line, message in findings]
+    return [f"{path}:{line}: {message}" for line, message in sorted(findings)]
 
 
 def main(argv):
     if argv[:1] in (["-h"], ["--help"]):
         print(__doc__.strip())
         return 0
-    if len(argv) not in (1, 2):
+    # A TOOL that looks like a file name is a swapped argument list.
+    if (
+        len(argv) not in (1, 2)
+        or any(arg.startswith("-") for arg in argv)
+        or argv[0].endswith(".md")
+    ):
         print("usage: check-readme.py TOOL [README]", file=sys.stderr)
         return 2
     path = argv[1] if len(argv) == 2 else "README.md"
