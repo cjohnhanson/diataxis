@@ -382,7 +382,7 @@ class FenceGuards(unittest.TestCase):
             "sudo cargo install tundish",
             "uv pip install tundish",
             "uv tool install tundish",
-            "nix profile install github:x/tundish",
+            "nix profile install tundish",
             "type tundish",
             "pipx install tundish",
             "apt install tundish",
@@ -439,7 +439,7 @@ class MoreGuards(unittest.TestCase):
             "pip3 install tundish",
             "apt-get install tundish",
             "npm i -g tundish",
-            "nix profile add github:x/tundish",
+            "nix profile add tundish",
         ):
             self.assertEqual(self.count(f"```sh\n{line}\n```\n"), 0, line)
 
