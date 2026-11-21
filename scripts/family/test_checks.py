@@ -409,6 +409,10 @@ class MoreGuards(unittest.TestCase):
     def count(self, text):
         return len(fences.check(write(text)))
 
+    def test_tab_indented_heredoc_terminator_closes_it(self):
+        text = "```sh\ncat <<-EOF\n\tdata\n\tEOF\ntundish pull\n```\n"
+        self.assertEqual(self.count(text), 1)
+
     def test_h1_named_installation_exempts_nothing(self):
         self.assertEqual(self.count("# Installation\n\n```sh\ntundish pull\n```\n"), 1)
 
