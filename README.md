@@ -33,54 +33,100 @@ takes the `store` feature and needs neither the command nor its
 dependencies:
 
 ```toml
+[dependencies]
 diataxis = { version = "0.2", default-features = false, features = ["store"] }
 ```
 
 ## Usage
 
-```sh
-diataxis init                                   # write diataxis.yml, make docs/
-diataxis page create "How to rotate a key" -T how-to
-diataxis page list [-T reference]               # the pages, by type
-diataxis map                                    # the four quadrants
-diataxis compass [<page>]                       # the two questions that name a type
-diataxis check                                  # type faults and broken links
-diataxis search <pattern>                       # every matching line
-diataxis export --out <DIR>                     # the pages as front-matter Markdown for a site
-diataxis store list | sync | root               # this set and the sets it declares
-diataxis docs [topic]                           # the bundled documentation
+`diataxis init` writes `diataxis.yml` and makes `docs/`. `page create`
+writes a page of one type, and `page list` prints the pages with their
+types:
+
+```console
+$ diataxis init
+diataxis: wrote [CWD]/diataxis.yml
+diataxis: pages live in [CWD]/docs
+
+$ diataxis page create "How to rotate a key" -T how-to --body "Run acme rotate, then restart."
+how-to-rotate-a-key (how-to)
+
+$ diataxis page create "Getting started" -T tutorial
+getting-started (tutorial)
+
+$ diataxis page list
+getting-started              tutorial     Getting started
+how-to-rotate-a-key          how-to       How to rotate a key
+
 ```
+
+`check` reports type faults and broken links. A type with no pages is
+advice, not a fault. `search` prints every line that matches a pattern:
+
+```console
+$ diataxis check
+advice  the set                      no reference pages
+advice  the set                      no explanation pages
+
+$ diataxis search rotate
+how-to-rotate-a-key:1  how-to  Run acme rotate, then restart.
+
+```
+
+`map` shows the four quadrants and the pages in each. `export --out
+<DIR>` writes the pages as front-matter Markdown for a site generator.
+`store list` and `store sync` show and fetch the sets this set reads, and
+`store root` sets the set a read falls back to outside any set. `docs` prints the bundled documentation, and
+[the CLI reference](docs/cli-reference.md) lists every command.
 
 ## The four types
 
 Diátaxis identifies four reader needs and one form for each. Two
 questions separate them. Does a page inform **action** or **cognition**?
-Does it serve a reader **acquiring** skill, or one **applying** it.
+Does it serve a reader **acquiring** skill, or one **applying** it?
 
 | | acquisition | application |
 |---|---|---|
 | **action** | tutorial | how-to guide |
 | **cognition** | explanation | reference |
 
-`diataxis compass` prints that table. It does not classify a page.
-Classification needs a reader, and a tool that guessed would be
-inventing a fact.
+`diataxis compass` prints the two questions and the four types:
+
+```console
+$ diataxis compass
+Two questions name a page's type.
+
+  1. Does it inform action or cognition?
+  2. Does it serve acquisition of skill, or application?
+
+  tutorial     action     acquisition  a lesson: the reader learns by doing, and the writer owns the outcome
+  how-to       action     application  directions: the reader is competent and already knows the goal
+  reference    cognition  application  neutral description of the machinery, consulted during work
+  explanation  cognition  acquisition  a discursive treatment of one topic, read away from the work
+
+```
+
+It does not classify a page. Classification needs a reader, and a tool
+that guessed would be inventing a fact.
 
 ## How it works
 
 `diataxis.yml` governs one documentation set. It names the pages
-directory, `docs` by default. Documentation is the published artefact,
-unlike an issue or a note, so it stays where readers and site builds
-look for it.
+directory, `docs` by default, and the title `map` prints. Without a
+title, `map` prints the name of the set's directory. Documentation is
+the published artefact, unlike an issue or a note, so it stays where
+readers and site builds look for it.
 
-```yaml
+```yaml {filename="diataxis.yml"}
 docs_dir: docs
 title: acme
 ```
 
-A page is a markdown document whose frontmatter declares a type:
+A page is a markdown document whose frontmatter declares a type. Saved
+as `docs/how-to-rotate-the-signing-key.md`, this one is a page that
+`page show` finds by a prefix of its id:
 
-```markdown
+```markdown {filename="docs/how-to-rotate-the-signing-key.md"}
 <!-- metadata
 title: "How to rotate the signing key"
 description: "Replace a key without dropping a session"
@@ -88,6 +134,18 @@ type: how-to
 -->
 
 # How to rotate the signing key
+```
+
+```console
+$ diataxis page show how-to-rotate-the
+how-to-rotate-the-signing-key
+
+  Title:        How to rotate the signing key
+  Type:         how-to
+  Description:  Replace a key without dropping a session
+
+# How to rotate the signing key
+
 ```
 
 Frontmatter comes in two forms. The `---` form is what most markdown
@@ -116,15 +174,23 @@ reported.
 A set can draw on other sets. Declare them in `stores.yml`, each under a
 local alias:
 
-```yaml
+```yaml {filename="stores.yml"}
 format: 2
 stores:
   - alias: shared
     path: ../team-docs
 ```
 
-A page then writes `[[shared:onboarding]]`. `store list` shows every set
-in the closure with its page count.
+Here `../team-docs` is another set, made with `diataxis init`, that holds
+a page `onboarding`. A page then writes `[[shared:onboarding]]`. `store
+list` shows every set in the closure with its page count:
+
+```console
+$ diataxis store list
+(this set)  [CWD]  3 page(s)
+shared  ../team-docs  1 page(s)
+
+```
 
 `check` does not resolve a qualified reference. mdstore exposes no
 per-reference resolution across a closure, so `check` reads one set and
@@ -144,7 +210,7 @@ diataxis = { version = "0.2", default-features = false, features = ["build"] }
 diataxis = { version = "0.2", default-features = false, features = ["cli"] }
 ```
 
-```rust
+```rust,no_run
 // build.rs
 fn main() -> std::io::Result<()> {
     diataxis::build::embed_docs()
@@ -166,8 +232,13 @@ binary and the clap surface. A tool that parses its own arguments turns
 `cli` off and asks for text:
 
 ```rust
-let request = diataxis::docs::request_from_args(args)?;
-print!("{}", diataxis::DocSet::from_embedded(DOCS)?.render(request)?);
+static DOCS: &[(&str, &str)] = diataxis::embedded_docs!();
+
+fn docs(args: &[String]) -> diataxis::Result<()> {
+    let request = diataxis::docs::request_from_args(args)?;
+    print!("{}", diataxis::DocSet::from_embedded(DOCS)?.render(request)?);
+    Ok(())
+}
 ```
 
 gaff is that tool. clap exits 2 on a usage error, and 2 is the code gaff

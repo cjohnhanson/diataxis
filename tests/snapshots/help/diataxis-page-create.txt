@@ -1,0 +1,49 @@
+Create a page of one type
+
+The type also accepts `guide`, `howto`, `how_to`, and `how-to-guide` for a how-to guide, and
+`discussion` or `background` for an explanation.
+
+Fails when a page of that id already exists.
+
+Usage: diataxis page create [OPTIONS] --type <TYPE> <TITLE>
+
+Arguments:
+  <TITLE>
+          The page title. A how-to title states a goal: "How to ..."
+
+Options:
+      --root <ROOT>
+          Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no
+          fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
+          
+          `init` writes diataxis.yml into this directory instead. `prime`, `docs`, and `store
+          root` ignore it, and so does `compass` with no page.
+          
+          An empty value is refused.
+
+  -T, --type <TYPE>
+          The Diataxis type: tutorial, how-to, reference, or explanation
+
+  -d, --description <DESCRIPTION>
+          The one-line description
+
+      --home
+          Act on the configured root set, wherever the command runs.
+          
+          Conflicts with `--root`. Without either, a read outside any set falls back to the
+          configured root set and names it on stderr. A write outside any set fails.
+          
+          `init`, `prime`, `docs`, and `store root` refuse `--home`, and so does `compass` with no
+          page.
+
+  -t, --tags <TAGS>
+          Tags, separated by commas
+
+  -b, --body <BODY>
+          The page body
+
+      --id <ID>
+          The file stem, when the slug from the title is not wanted
+
+  -h, --help
+          Print help (see a summary with '-h')

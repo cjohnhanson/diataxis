@@ -1,0 +1,44 @@
+Diataxis documentation sets as typed markdown
+
+Every command takes `-h` or `--help`. `-V` and `--version` work at the
+top level only, as `diataxis --version`; a subcommand refuses them.
+
+Usage: diataxis [OPTIONS] <COMMAND>
+
+Commands:
+  init     Initialize a documentation set in the current directory
+  prime    Print what diataxis is and how to use it, for an agent's context
+  page     Manage pages
+  map      Show the set as the four Diataxis quadrants
+  compass  Show the two questions that name a page's type
+  check    Check the pages for type faults and broken links
+  search   Search the pages
+  export   Write the pages as front-matter Markdown for a site generator
+  store    Manage the declared documentation sets
+  docs     Show the bundled documentation
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --root <ROOT>
+          Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no
+          fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
+          
+          `init` writes diataxis.yml into this directory instead. `prime`, `docs`, and `store
+          root` ignore it, and so does `compass` with no page.
+          
+          An empty value is refused.
+
+      --home
+          Act on the configured root set, wherever the command runs.
+          
+          Conflicts with `--root`. Without either, a read outside any set falls back to the
+          configured root set and names it on stderr. A write outside any set fails.
+          
+          `init`, `prime`, `docs`, and `store root` refuse `--home`, and so does `compass` with no
+          page.
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version

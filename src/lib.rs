@@ -64,6 +64,24 @@ pub use page::{Kind, Page, PageFrontmatter};
 #[cfg(feature = "store")]
 pub use repo::{CreatePageOptions, EditPageOptions, Repo, SearchResult};
 
+/// The Rust examples in README.md, compiled by `cargo test --doc`. A
+/// consumer copies them, so an example that names a function this crate
+/// lacks fails the build here first. Each example uses one of the three
+/// features, so the doctests need all three; `cli` implies `store`.
+///
+/// A page's `{filename="..."}` fences are for tests/docs.rs, and rustdoc
+/// warns on an attribute it does not know, so that warning is off here.
+#[cfg(all(doctest, feature = "build", feature = "cli"))]
+#[allow(rustdoc::invalid_codeblock_attributes)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;
+
+/// The Rust examples in the adoption guide, compiled the same way.
+#[cfg(all(doctest, feature = "build", feature = "cli"))]
+#[allow(rustdoc::invalid_codeblock_attributes)]
+#[doc = include_str!("../docs/how-to-adopt-diataxis-in-an-existing-project.md")]
+pub struct AdoptionGuideDoctests;
+
 /// Every page of this project's documentation set, compiled in.
 ///
 /// One line, and no list. The build script wrote the array; this reads

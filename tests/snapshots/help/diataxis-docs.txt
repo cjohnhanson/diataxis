@@ -1,0 +1,40 @@
+Show the bundled documentation
+
+With no topic, or with `list`, prints one line per bundled page. A topic prints one page, by slug,
+title, or unique prefix. `search <query>` prints the pages that hold the query. `--all` prints
+every page whole, in one stream. The pages are compiled into the binary, so this works from any
+directory.
+
+Usage: diataxis docs [OPTIONS] [TOPIC] [QUERY]
+
+Arguments:
+  [TOPIC]
+          Topic slug to show, or "search" to search the docs
+
+  [QUERY]
+          Search query (when topic is "search")
+
+Options:
+  -a, --all
+          Print every page whole, in one stream
+
+      --root <ROOT>
+          Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no
+          fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
+          
+          `init` writes diataxis.yml into this directory instead. `prime`, `docs`, and `store
+          root` ignore it, and so does `compass` with no page.
+          
+          An empty value is refused.
+
+      --home
+          Act on the configured root set, wherever the command runs.
+          
+          Conflicts with `--root`. Without either, a read outside any set falls back to the
+          configured root set and names it on stderr. A write outside any set fails.
+          
+          `init`, `prime`, `docs`, and `store root` refuse `--home`, and so does `compass` with no
+          page.
+
+  -h, --help
+          Print help (see a summary with '-h')

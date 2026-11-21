@@ -39,17 +39,31 @@ pub struct Args {
     /// diataxis.yml; no walk, no fallback. Without it, the nearest
     /// diataxis.yml at or above the cwd is used.
     ///
+    /// `init` writes diataxis.yml into this directory instead. `prime`,
+    /// `docs`, and `store root` ignore it, and so does `compass` with no
+    /// page.
+    ///
     /// An empty value is refused.
     // An empty value read as a relative path, joined to nothing, and
     // acted on the working directory, so an unset variable wrote to
     // whichever set the shell stood in.
+    // Handler: run (src/cli.rs). For a command `intent` returns None
+    // for, a relative value is joined to the cwd and passed to
+    // run_command, where only Command::Init reads it. Every other
+    // command passes it to mdstore::resolve::resolve_root.
     #[arg(long, global = true, value_parser = non_empty_root)]
     pub root: Option<Utf8PathBuf>,
 
     /// Act on the configured root set, wherever the command runs.
     ///
     /// Conflicts with `--root`. Without either, a read outside any set
-    /// falls back to the configured root set and names it on stderr.
+    /// falls back to the configured root set and names it on stderr. A
+    /// write outside any set fails.
+    ///
+    /// `init`, `prime`, `docs`, and `store root` refuse `--home`, and so
+    /// does `compass` with no page.
+    // Handler: run (src/cli.rs): the `intent` None branch refuses it,
+    // and mdstore::resolve::resolve_root reads it for the rest.
     #[arg(long, global = true, conflicts_with = "root")]
     pub home: bool,
 
@@ -100,9 +114,12 @@ pub enum Command {
     ///
     /// Writes `diataxis.yml` and makes the pages directory. An existing
     /// directory of pages is adopted, so a repository with docs already
-    /// written runs `init` once and keeps every page.
+    /// written runs `init` once and keeps every page. With `--root`, the
+    /// set goes in that directory instead, which must exist.
     ///
     /// Fails when `diataxis.yml` exists.
+    // Handler: run_command, Command::Init (src/cli.rs), and Repo::init
+    // (src/repo.rs).
     Init,
 
     /// Write the man pages into a directory (the package build uses this)
@@ -122,9 +139,11 @@ pub enum Command {
     /// Print what diataxis is and how to use it, for an agent's context
     ///
     /// Depends only on the binary, so it runs from any directory.
+    // Handler: run_command, Command::Prime, and prime (src/cli.rs).
     Prime,
 
     /// Manage pages
+    // Handler: run_page (src/cli.rs).
     #[command(subcommand)]
     Page(Box<PageCommand>),
 
@@ -134,6 +153,7 @@ pub enum Command {
     /// reference, explanation. Each names what it informs and what it
     /// serves, with its pages under it. A type with no pages prints
     /// `(none)`.
+    // Handler: run_map (src/cli.rs).
     Map,
 
     /// Show the two questions that name a page's type
@@ -145,6 +165,8 @@ pub enum Command {
     /// The compass does not classify a page: classification needs a
     /// reader. Without a page, it resolves no set and runs from any
     /// directory.
+    // Handler: run_compass (src/cli.rs), and `intent` for the rootless
+    // case.
     Compass(CompassArgs),
 
     /// Check the pages for type faults and broken links
@@ -165,6 +187,8 @@ pub enum Command {
     /// pages. Exits non-zero when a fault is found. A reference inside
     /// code, or escaped as `\[[x]]`, is literal text. Nothing here
     /// judges prose.
+    // Handler: run_check (src/cli.rs), and check (src/check.rs), which
+    // sorts faults before advice.
     Check,
 
     /// Search the pages
@@ -172,6 +196,7 @@ pub enum Command {
     /// Matches a regular expression against every page body, without
     /// regard to case. Prints the page id, the line number, the type,
     /// and the line.
+    // Handler: run_search (src/cli.rs), and Repo::search (src/repo.rs).
     Search(SearchArgs),
 
     /// Write the pages as front-matter Markdown for a site generator
@@ -188,9 +213,11 @@ pub enum Command {
     /// removes it again if a write fails. To export again, remove the
     /// previous output first. File names the site generator reserves,
     /// such as Hugo's `index` and `_index`, are the site's to avoid.
+    // Handler: run_export (src/cli.rs), and export (src/export.rs).
     Export(ExportArgs),
 
     /// Manage the declared documentation sets
+    // Handler: run_store and run_store_root (src/cli.rs).
     #[command(subcommand)]
     Store(StoreCommand),
 
@@ -201,6 +228,8 @@ pub enum Command {
     /// `search <query>` prints the pages that hold the query. `--all`
     /// prints every page whole, in one stream. The pages are compiled
     /// into the binary, so this works from any directory.
+    // Handler: run_command, Command::Docs (src/cli.rs), DocsArgs::request
+    // and DocSet::render (src/docs.rs).
     Docs(DocsArgs),
 }
 
@@ -213,29 +242,40 @@ pub enum PageCommand {
     /// `background` for an explanation.
     ///
     /// Fails when a page of that id already exists.
+    // Handler: run_page, PageCommand::Create (src/cli.rs), Kind::from_str
+    // (src/page.rs), and Repo::create (src/repo.rs).
     Create(PageCreateArgs),
 
     /// List the pages
     ///
     /// One line per page: the id, the type, and the title.
+    // Handler: run_page, PageCommand::List (src/cli.rs).
     List(PageListArgs),
 
     /// Show one page
     ///
     /// Prints the metadata and the body. An ambiguous prefix is an error
     /// that names what it matched.
+    // Handler: run_page, PageCommand::Show (src/cli.rs), and Repo::get
+    // (src/repo.rs).
     Show(PageShowArgs),
 
     /// Change a page
     ///
     /// A field left out is left alone. The page is written back in the
     /// metadata form it was read in, so an edit never converts a file.
+    // Handler: run_page, PageCommand::Edit (src/cli.rs), and Repo::edit
+    // (src/repo.rs).
     Edit(PageEditArgs),
 
     /// Remove a page
+    // Handler: run_page, PageCommand::Delete (src/cli.rs), and
+    // Repo::delete (src/repo.rs).
     Delete(PageDeleteArgs),
 
     /// Print the file path of a page, to open it in an editor
+    // Handler: run_page, PageCommand::Path (src/cli.rs), and
+    // Repo::path_of (src/repo.rs).
     Path(PageShowArgs),
 }
 
@@ -323,16 +363,22 @@ pub enum StoreCommand {
     /// One row per set in the closure: this set first, then each
     /// declared set under its alias, with its source and its page count.
     /// A remote set shows the time since its last fetch.
+    // Handler: run_store, StoreCommand::List (src/cli.rs), and
+    // Workspace::store_members (src/workspace.rs).
     List,
     /// Fetch the declared remote sets into the local cache
     ///
     /// Exits non-zero when a fetch fails. No other command reaches the
     /// network.
+    // Handler: run_store, StoreCommand::Sync (src/cli.rs), and
+    // Workspace::open_fetching and Workspace::sync_all
+    // (src/workspace.rs).
     Sync,
     /// Show or set the root set that reads fall back to
     ///
     /// The directory must hold `diataxis.yml`. This command resolves no
     /// set and runs from any directory.
+    // Handler: run_store_root (src/cli.rs).
     Root(StoreRootArgs),
 }
 

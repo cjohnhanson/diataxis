@@ -1,0 +1,47 @@
+Change a page
+
+A field left out is left alone. The page is written back in the metadata form it was read in, so
+an edit never converts a file.
+
+Usage: diataxis page edit [OPTIONS] <PAGE>
+
+Arguments:
+  <PAGE>
+          The page id, or a unique prefix of one
+
+Options:
+      --root <ROOT>
+          Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no
+          fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
+          
+          `init` writes diataxis.yml into this directory instead. `prime`, `docs`, and `store
+          root` ignore it, and so does `compass` with no page.
+          
+          An empty value is refused.
+
+      --title <TITLE>
+          Replace the title
+
+  -d, --description <DESCRIPTION>
+          Replace the description
+
+      --home
+          Act on the configured root set, wherever the command runs.
+          
+          Conflicts with `--root`. Without either, a read outside any set falls back to the
+          configured root set and names it on stderr. A write outside any set fails.
+          
+          `init`, `prime`, `docs`, and `store root` refuse `--home`, and so does `compass` with no
+          page.
+
+  -T, --type <TYPE>
+          Retype the page
+
+  -t, --tags <TAGS>
+          Replace the tags
+
+  -b, --body <BODY>
+          Replace the body
+
+  -h, --help
+          Print help (see a summary with '-h')

@@ -1,0 +1,38 @@
+Write the pages as front-matter Markdown for a site generator
+
+Each page becomes `DIR/<id>.md` with `---` front matter: `title`, `description`, `weight`, and
+`params.diataxis_type`. The weight orders pages by type, then by title. A `[[page]]` reference
+becomes a relative `<id>.md` link. The leading H1 is dropped.
+
+Export runs `check` first and refuses a set with a fault, naming each one. It also refuses a
+reference to a page in another set, an embed, `![[x]]`, and a relative `.md` link to a file that
+is not a page of the set. `DIR` must not exist: export creates it, and removes it again if a write
+fails. To export again, remove the previous output first. File names the site generator reserves,
+such as Hugo's `index` and `_index`, are the site's to avoid.
+
+Usage: diataxis export [OPTIONS] --out <DIR>
+
+Options:
+      --out <DIR>
+          The directory to create and write into; it must not exist yet
+
+      --root <ROOT>
+          Documentation set directory. Literal: the directory must hold diataxis.yml; no walk, no
+          fallback. Without it, the nearest diataxis.yml at or above the cwd is used.
+          
+          `init` writes diataxis.yml into this directory instead. `prime`, `docs`, and `store
+          root` ignore it, and so does `compass` with no page.
+          
+          An empty value is refused.
+
+      --home
+          Act on the configured root set, wherever the command runs.
+          
+          Conflicts with `--root`. Without either, a read outside any set falls back to the
+          configured root set and names it on stderr. A write outside any set fails.
+          
+          `init`, `prime`, `docs`, and `store root` refuse `--home`, and so does `compass` with no
+          page.
+
+  -h, --help
+          Print help (see a summary with '-h')
