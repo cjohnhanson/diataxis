@@ -448,7 +448,29 @@ class MoreGuards(unittest.TestCase):
         self.assertIn("inside a list or quote", found[0])
 
 
+class Unreadable(unittest.TestCase):
+    def bad(self):
+        handle = tempfile.NamedTemporaryFile("wb", suffix=".md", delete=False)
+        handle.write(b"# t\xe9\n")
+        handle.close()
+        return handle.name
+
+    def test_non_utf8_file_exits_2(self):
+        self.assertEqual(fences.main([self.bad()]), 2)
+        self.assertEqual(readme.main(["t", self.bad()]), 2)
+
+    def test_unknown_option_exits_2(self):
+        self.assertEqual(fences.main(["--bogus", write("x\n")]), 2)
+
+    def test_readme_help_exits_0(self):
+        self.assertEqual(readme.main(["--help"]), 0)
+
+
 class ReadmeLevels(unittest.TestCase):
+    def test_title_with_punctuation_names_the_tool(self):
+        text = Readme.GOOD.replace("# tundish", "# tundish: a local inbox")
+        self.assertEqual(readme.check("tundish", write(text)), [])
+
     def test_subheading_under_license_passes(self):
         text = Readme.GOOD + "\n### Third-party notices\n\nx\n"
         self.assertEqual(readme.check("tundish", write(text)), [])

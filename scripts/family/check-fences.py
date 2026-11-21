@@ -7,9 +7,10 @@
 
     uv run check-fences.py [--tool NAME]... FILE...
 
-The family tools are the names in TOOLS below: the eng.rip tools and
-gaff's short name, gaffr. `--tool` adds a name, so a tool that calls the
-family workflow is checked whether or not TOOLS lists it.
+The family tools are tundish, gaff (also installed as gaffr), tisket,
+zettel, almanac, diataxis, and missouri. `--tool` adds a name, so a tool
+that calls the family workflow (.github/workflows/family-checks.yml) is
+checked whether or not it is in that list.
 
 Each tool repository runs its README and docs pages through trycmd in
 `cargo test`. trycmd runs a block that opens with backticks at column 0
@@ -28,13 +29,14 @@ examples the same set:
    an `Install` or `Installation` section, whose commands change the
    reader's machine. A command is a line after a prompt (`$ `, `% `,
    `❯ `, `PS>`) in any fence, or a line in a shell or session fence, that
-   names a family tool as a word or a path's last part; or, in a `text`
+   names a family tool as a word, or as a path's last part in command
+   position (`./target/release/tundish`); or, in a `text`
    fence or an indented code block, a line that starts with a tool name
    and is not a synopsis (`<placeholder>`, `[option]`) or a version line.
    Config languages such as YAML and TOML name tools without running them.
    A command that installs or locates a tool, a heredoc body, and a `#`
-   comment in a shell fence pass. The section is the nearest level-2
-   heading.
+   comment in a shell fence pass. A level-2 heading starts a section,
+   and a level-1 heading ends it.
 
 Exit status 1 on any finding, with one `file:line: message` per finding;
 2 on a usage error or a file that cannot be read.
@@ -240,7 +242,12 @@ def check(path):
         if not closed:
             findings.append((first, "fence is never closed"))
         if not lang:
-            findings.append((first, "fence has no language; trycmd runs it as a test"))
+            findings.append(
+                (
+                    first,
+                    "fence has no language; name one, such as `console` for a command or `text` for output",
+                )
+            )
         elif lang in ("console", "trycmd"):
             if first in runs and runs[first][1]:
                 findings.append(
@@ -312,6 +319,12 @@ def main(argv):
         elif arg in ("-h", "--help"):
             print(__doc__.strip())
             return 0
+        elif arg.startswith("-"):
+            print(
+                f"unknown option {arg}; usage: check-fences.py [--tool NAME]... FILE...",
+                file=sys.stderr,
+            )
+            return 2
         else:
             paths.append(arg)
     if not paths:
@@ -323,6 +336,9 @@ def main(argv):
             findings.extend(check(path))
         except OSError as error:
             print(f"{path}: cannot read: {error.strerror}", file=sys.stderr)
+            return 2
+        except UnicodeDecodeError:
+            print(f"{path}: cannot read: not UTF-8", file=sys.stderr)
             return 2
     for finding in findings:
         print(finding)

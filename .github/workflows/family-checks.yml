@@ -17,8 +17,8 @@
 # - fences (scripts/family/check-fences.py): every command of a family
 #   tool, or of the calling tool, sits in a block that docs test runs;
 # - README shape (scripts/family/check-readme.py);
-# - spelling, with typos, over README.md and docs/ (code identifiers are
-#   out of its scope);
+# - spelling, with typos, over README.md and docs/ only (source files are
+#   not read);
 # - links: internal links only on a pull request or in a merge queue, so a
 #   remote site that is down cannot block a merge; every link otherwise.
 # Each check runs even when an earlier one fails.
@@ -61,7 +61,7 @@ jobs:
         run: |
           for word in trycmd README.md docs; do
             grep -qs "$word" "$DOCS_TEST" || {
-              echo "$DOCS_TEST is missing or never names $word; it runs README.md and docs/ with trycmd (the docs-test input names another file)" >&2
+              echo "$DOCS_TEST is missing or never names $word. It must run README.md and docs/ with trycmd. If the docs test is another file, set the docs-test input." >&2
               exit 1
             }
           done
